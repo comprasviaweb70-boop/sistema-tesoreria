@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Calendar, User, Clock, Trash2 } from 'lucide-react';
+import { Search, Calendar, User, Clock, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/lib/customSupabaseClient';
 
-const SearchFilterBar = ({ onSearch, results = [], onDelete }) => {
+const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevClosures = {} }) => {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [cajeroId, setCajeroId] = useState('all-users');
@@ -180,6 +180,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete }) => {
                   <TableHead className="font-semibold">Fecha</TableHead>
                   <TableHead className="font-semibold">Turno</TableHead>
                   <TableHead className="font-semibold">Estado</TableHead>
+                  <TableHead className="font-semibold text-right">Saldo Inicial</TableHead>
                   <TableHead className="font-semibold text-right">Total Ventas</TableHead>
                   <TableHead className="font-semibold text-right">Cierre Declarado</TableHead>
                   <TableHead className="font-semibold text-center w-[80px]">Eliminar</TableHead>
@@ -198,6 +199,15 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete }) => {
                       }`}>
                         {rec.estado}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono relative">
+                      <div className="flex items-center justify-end gap-1">
+                        {historyPrevClosures[rec.id] !== undefined && 
+                         rec.saldo_inicial !== historyPrevClosures[rec.id] && (
+                          <AlertCircle className="h-4 w-4 text-orange-400" title={`Discrepancia: Cierre anterior fue ${formatCurrency(historyPrevClosures[rec.id])}`} />
+                        )}
+                        <span>{formatCurrency(rec.saldo_inicial)}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(rec.total_ventas)}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(rec.cierre_declarado_pdf)}</TableCell>

@@ -1,12 +1,12 @@
 
 import React from 'react';
-import { Lock, CheckCircle, RefreshCcw } from 'lucide-react';
+import { Lock, CheckCircle, RefreshCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContextObject';
 
-const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit, onFieldChange, onLoadPreviousSaldo }) => {
+const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit, onFieldChange, onLoadPreviousSaldo, prevShiftCierre }) => {
   const { isAdministrador, isSupervisor } = useAuth();
 
   const formatCurrency = (value) => {
@@ -141,6 +141,18 @@ const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit,
                 : 'bg-red-500/10 text-red-400 border-red-500/30'
             }`}>
               {diferenciaFinal > 0 ? 'Excedente de Caja' : 'Faltante de Caja'}
+            </div>
+          )}
+
+          {prevShiftCierre !== null && saldoInicial !== prevShiftCierre && (
+            <div className="mt-2 p-3 text-center rounded-md border border-orange-500/30 bg-orange-500/10 text-orange-400 text-xs font-semibold">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <AlertCircle className="h-4 w-4" />
+                <span>Discrepancia Turno Anterior</span>
+              </div>
+              <p className="font-normal opacity-90">
+                El saldo inicial no coincide con el cierre del turno anterior ({formatCurrency(prevShiftCierre)})
+              </p>
             </div>
           )}
 

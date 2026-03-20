@@ -29,6 +29,8 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
   const [isPDFModalOpen, setIsPDFModalOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [prevShiftCierre, setPrevShiftCierre] = useState(null);
+  const [historyPrevClosures, setHistoryPrevClosures] = useState({}); // { recordId: prevClosureValue }
   const { userProfile, isAdministrador } = useAuth();
   const { toast } = useToast();
   const [discrepanciasPdf, setDiscrepanciasPdf] = useState({ ingresos: null, retiros: null });
@@ -60,6 +62,41 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
   useEffect(() => {
     localStorage.setItem('vd_cajaId', cajaId);
   }, [cajaId]);
+
+  // Fetch previous shift closure for the current record
+  useEffect(() => {
+    const fetchPrevShift = async () => {
+      if (!cajaId || !fecha || !turno) return;
+      
+      let prevFecha = fecha;
+      let prevTurno = 'Mañana';
+      
+      if (turno === 'Mañana') {
+        const d = new Date(fecha + 'T12:00:00'); // Evitar problemas de zona horaria
+        d.setDate(d.getDate() - 1);
+        prevFecha = d.toISOString().split('T')[0];
+        prevTurno = 'Tarde';
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('venta_diaria')
+          .select('cierre_declarado_pdf')
+          .eq('caja_id', cajaId)
+          .eq('fecha', prevFecha)
+          .eq('turno', prevTurno)
+          .maybeSingle();
+        
+        if (error) throw error;
+        setPrevShiftCierre(data ? data.cierre_declarado_pdf : 0);
+      } catch (err) {
+        console.error('Error fetching prev shift closure:', err);
+        setPrevShiftCierre(null);
+      }
+    };
+
+    fetchPrevShift();
+  }, [fecha, turno, cajaId]);
 
   const calculateTotals = (data) => {
     const saldo_inicial = parseFloat(data.saldo_inicial) || 0;
@@ -407,6 +444,51 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
       setSearchLoading(false);
     }
   };
+
+  /**
+   * Enriquecer los resultados de búsqueda con el cierre del turno anterior para cada registro
+   */
+  useEffect(() => {
+    const fetchAllPrevClosures = async () => {
+      if (searchResults.length === 0) return;
+
+      const closuresMap = {};
+      
+      for (const rec of searchResults) {
+        let prevFecha = rec.fecha;
+        let prevTurno = 'Mañana';
+        
+        if (rec.turno === 'Mañana') {
+          const d = new Date(rec.fecha + 'T12:00:00');
+          d.setDate(d.getDate() - 1);
+          prevFecha = d.toISOString().split('T')[0];
+          prevTurno = 'Tarde';
+        }
+
+        try {
+          const { data, error } = await supabase
+            .from('venta_diaria')
+            .select('cierre_declarado_pdf')
+            .eq('caja_id', rec.caja_id)
+            .eq('fecha', prevFecha)
+            .eq('turno', prevTurno)
+            .maybeSingle();
+          
+          if (!error && data) {
+            closuresMap[rec.id] = data.cierre_declarado_pdf;
+          } else {
+            closuresMap[rec.id] = 0;
+          }
+        } catch (err) {
+          console.error(`Error fetching prev closure for ${rec.id}:`, err);
+        }
+      }
+      
+      setHistoryPrevClosures(closuresMap);
+    };
+
+    fetchAllPrevClosures();
+  }, [searchResults]);
 
   const handleDeleteRecord = (deletedId) => {
     setSearchResults((prev) => prev.filter((r) => r.id !== deletedId));
@@ -873,6 +955,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
                   canEdit={canEdit}
                   onFieldChange={handleFieldChange}
                   onLoadPreviousSaldo={loadPreviousDaySaldo}
+                  prevShiftCierre={prevShiftCierre}
                 />
         </div>
       </div>
@@ -883,6 +966,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
           onSearch={handleSearch}
           results={searchResults}
           onDelete={handleDeleteRecord}
+          historyPrevClosures={historyPrevClosures}
         />
       </div>
 
