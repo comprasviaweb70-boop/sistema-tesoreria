@@ -24,6 +24,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
     monto: '',
     fecha: new Date().toISOString().split('T')[0],
     turno: localStorage.getItem('vd_turno') || 'Mañana',
+    medio_a_corregir: 'redelcom', // Default: Débito
   });
 
   useEffect(() => {
@@ -55,7 +56,9 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
    */
   const syncToVentaDiaria = async (monto) => {
     let campo;
-    const catName = categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase() || '';
+    const selectedCat = categorias.find(c => c.id === formData.categoria_id);
+    const catName = selectedCat?.nombre?.toLowerCase() || '';
+    const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
     
     if (formData.tipo === 'ingreso') {
       if (catName.startsWith('traspaso')) campo = 'traspaso_tesoreria_ingreso';
@@ -64,9 +67,47 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
       if (catName.startsWith('rrhh')) campo = 'gastos_rrhh';
       else if (catName.startsWith('servicio')) campo = 'servicios';
       else if (catName.startsWith('gasto')) campo = 'gastos';
-      else if (catName.startsWith('correccion') || catName.startsWith('corrección')) campo = 'correccion_boletas';
       else if (catName.startsWith('traspaso')) campo = 'traspaso_tesoreria_egreso';
       else campo = 'otros_egresos';
+    }
+
+    // Para correcciones de boletas, no solo registramos el gasto/ingreso, 
+    // sino que ajustamos el desglose de ventas (Efectivo vs Otros Medios)
+    const updatePayload = {};
+    if (isCorreccion) {
+      const { data: currentVenta, error: fetchError } = await supabase
+        .from('venta_diaria')
+        .select(`id, venta_efectivo, ${formData.medio_a_corregir}`)
+        .eq('fecha', formData.fecha)
+        .eq('turno', formData.turno)
+        .eq('caja_id', globalCajaId)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (currentVenta) {
+        if (formData.tipo === 'ingreso') {
+          // Débito -> Efectivo (Aumenta efectivo, reduce el otro medio)
+          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + monto;
+          updatePayload[formData.medio_a_corregir] = (parseFloat(currentVenta[formData.medio_a_corregir]) || 0) - monto;
+        } else {
+          // Efectivo -> Débito (Reduce efectivo, aumenta el otro medio)
+          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) - monto;
+          updatePayload[formData.medio_a_corregir] = (parseFloat(currentVenta[formData.medio_a_corregir]) || 0) + monto;
+        }
+        
+        // Ejecutar actualización de los campos de venta
+        const { error: updateError } = await supabase
+          .from('venta_diaria')
+          .update(updatePayload)
+          .eq('id', currentVenta.id);
+        
+        if (updateError) throw updateError;
+      }
+      
+      // NOTA: No actualizamos ingresos_efectivo / correccion_boletas para evitar doble conteo
+      // en el cálculo del saldo, ya que el ajuste en venta_efectivo ya afecta al cierre_caja_sistema.
+      return; 
     }
 
     const { data: venta, error: fetchError } = await supabase
@@ -220,6 +261,29 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Campo condicional para corrección de boletas */}
+            {formData.categoria_id && (categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.startsWith('correccion') || 
+             categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.startsWith('corrección')) && (
+              <div className="space-y-2 md:col-span-2 p-3 bg-primary/5 border border-primary/20 rounded-md">
+                <Label className="text-primary font-semibold">Medio de Pago a Corregir</Label>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Selecciona qué medio de pago se verá afectado por esta corrección de efectivo.
+                </p>
+                <Select value={formData.medio_a_corregir} onValueChange={(v) => handleChange('medio_a_corregir', v)}>
+                  <SelectTrigger className="bg-background text-foreground">
+                    <SelectValue placeholder="Seleccione medio..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="redelcom">Débito (Redelcom)</SelectItem>
+                    <SelectItem value="tarjeta_credito">Tarjeta Crédito</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="edenred">Edenred</SelectItem>
+                    <SelectItem value="credito">Crédito Local (Fiado)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2 md:col-span-2">
               <Label>Descripción / Detalle</Label>
