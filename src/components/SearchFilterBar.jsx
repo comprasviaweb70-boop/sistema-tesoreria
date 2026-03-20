@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/lib/customSupabaseClient';
 
-const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevClosures = {} }) => {
+const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClosures = {} }) => {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [cajeroId, setCajeroId] = useState('all-users');
@@ -202,9 +202,13 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevClosures
                     </TableCell>
                     <TableCell className="text-right font-mono relative">
                       <div className="flex items-center justify-end gap-1">
-                        {historyPrevClosures[rec.id] !== undefined && 
-                         rec.saldo_inicial !== historyPrevClosures[rec.id] && (
-                          <AlertCircle className="h-4 w-4 text-orange-400" title={`Discrepancia: Cierre anterior fue ${formatCurrency(historyPrevClosures[rec.id])}`} />
+                        {historyPrevShiftClosures[rec.id] && 
+                         historyPrevShiftClosures[rec.id].length > 0 &&
+                         !historyPrevShiftClosures[rec.id].includes(rec.saldo_inicial) && (
+                          <AlertCircle 
+                            className="h-4 w-4 text-orange-400" 
+                            title={`Discrepancia: Ningún cierre anterior coincide. Registrados: ${historyPrevShiftClosures[rec.id].map(v => formatCurrency(v)).join(', ')}`} 
+                          />
                         )}
                         <span>{formatCurrency(rec.saldo_inicial)}</span>
                       </div>

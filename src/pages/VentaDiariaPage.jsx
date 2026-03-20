@@ -29,8 +29,8 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
   const [isPDFModalOpen, setIsPDFModalOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [prevShiftCierre, setPrevShiftCierre] = useState(null);
-  const [historyPrevClosures, setHistoryPrevClosures] = useState({}); // { recordId: prevClosureValue }
+  const [prevShiftClosures, setPrevShiftClosures] = useState([]);
+  const [historyPrevShiftClosures, setHistoryPrevShiftClosures] = useState({}); // { recordId: [closureValues] }
   const { userProfile, isAdministrador } = useAuth();
   const { toast } = useToast();
   const [discrepanciasPdf, setDiscrepanciasPdf] = useState({ ingresos: null, retiros: null });
@@ -63,16 +63,16 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
     localStorage.setItem('vd_cajaId', cajaId);
   }, [cajaId]);
 
-  // Fetch previous shift closure for the current record
+  // Fetch ALL previous shift closures for the current record's shift
   useEffect(() => {
     const fetchPrevShift = async () => {
-      if (!cajaId || !fecha || !turno) return;
+      if (!fecha || !turno) return;
       
       let prevFecha = fecha;
       let prevTurno = 'Mañana';
       
       if (turno === 'Mañana') {
-        const d = new Date(fecha + 'T12:00:00'); // Evitar problemas de zona horaria
+        const d = new Date(fecha + 'T12:00:00');
         d.setDate(d.getDate() - 1);
         prevFecha = d.toISOString().split('T')[0];
         prevTurno = 'Tarde';
@@ -82,21 +82,19 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
         const { data, error } = await supabase
           .from('venta_diaria')
           .select('cierre_declarado_pdf')
-          .eq('caja_id', cajaId)
           .eq('fecha', prevFecha)
-          .eq('turno', prevTurno)
-          .maybeSingle();
+          .eq('turno', prevTurno);
         
         if (error) throw error;
-        setPrevShiftCierre(data ? data.cierre_declarado_pdf : 0);
+        setPrevShiftClosures(data ? data.map(d => d.cierre_declarado_pdf) : []);
       } catch (err) {
-        console.error('Error fetching prev shift closure:', err);
-        setPrevShiftCierre(null);
+        console.error('Error fetching prev shift closures:', err);
+        setPrevShiftClosures([]);
       }
     };
 
     fetchPrevShift();
-  }, [fecha, turno, cajaId]);
+  }, [fecha, turno]);
 
   const calculateTotals = (data) => {
     const saldo_inicial = parseFloat(data.saldo_inicial) || 0;
@@ -446,45 +444,62 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
   };
 
   /**
-   * Enriquecer los resultados de búsqueda con el cierre del turno anterior para cada registro
+   * Enriquecer los resultados de búsqueda con el cierre de TODOS los del turno anterior para cada registro
    */
   useEffect(() => {
     const fetchAllPrevClosures = async () => {
       if (searchResults.length === 0) return;
 
       const closuresMap = {};
+      const shiftsToFetch = new Set();
       
-      for (const rec of searchResults) {
+      // Identificar qué turnos necesitamos consultar
+      searchResults.forEach(rec => {
         let prevFecha = rec.fecha;
         let prevTurno = 'Mañana';
-        
         if (rec.turno === 'Mañana') {
           const d = new Date(rec.fecha + 'T12:00:00');
           d.setDate(d.getDate() - 1);
           prevFecha = d.toISOString().split('T')[0];
           prevTurno = 'Tarde';
         }
+        shiftsToFetch.add(`${prevFecha}|${prevTurno}`);
+      });
 
+      // Consultar cada turno una sola vez
+      const shiftDataMap = {};
+      for (const shiftKey of shiftsToFetch) {
+        const [f, t] = shiftKey.split('|');
         try {
           const { data, error } = await supabase
             .from('venta_diaria')
             .select('cierre_declarado_pdf')
-            .eq('caja_id', rec.caja_id)
-            .eq('fecha', prevFecha)
-            .eq('turno', prevTurno)
-            .maybeSingle();
+            .eq('fecha', f)
+            .eq('turno', t);
           
           if (!error && data) {
-            closuresMap[rec.id] = data.cierre_declarado_pdf;
-          } else {
-            closuresMap[rec.id] = 0;
+            shiftDataMap[shiftKey] = data.map(d => d.cierre_declarado_pdf);
           }
         } catch (err) {
-          console.error(`Error fetching prev closure for ${rec.id}:`, err);
+          console.error(`Error fetching closures for ${shiftKey}:`, err);
         }
       }
+
+      // Mapear a los resultados
+      searchResults.forEach(rec => {
+        let prevFecha = rec.fecha;
+        let prevTurno = 'Mañana';
+        if (rec.turno === 'Mañana') {
+          const d = new Date(rec.fecha + 'T12:00:00');
+          d.setDate(d.getDate() - 1);
+          prevFecha = d.toISOString().split('T')[0];
+          prevTurno = 'Tarde';
+        }
+        const key = `${prevFecha}|${prevTurno}`;
+        closuresMap[rec.id] = shiftDataMap[key] || [];
+      });
       
-      setHistoryPrevClosures(closuresMap);
+      setHistoryPrevShiftClosures(closuresMap);
     };
 
     fetchAllPrevClosures();
@@ -955,7 +970,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
                   canEdit={canEdit}
                   onFieldChange={handleFieldChange}
                   onLoadPreviousSaldo={loadPreviousDaySaldo}
-                  prevShiftCierre={prevShiftCierre}
+                  prevShiftClosures={prevShiftClosures}
                 />
         </div>
       </div>
@@ -966,7 +981,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
           onSearch={handleSearch}
           results={searchResults}
           onDelete={handleDeleteRecord}
-          historyPrevClosures={historyPrevClosures}
+          historyPrevShiftClosures={historyPrevShiftClosures}
         />
       </div>
 
