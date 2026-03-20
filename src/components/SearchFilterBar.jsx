@@ -97,6 +97,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete }) => {
               type="date"
               value={fechaDesde}
               onChange={(e) => setFechaDesde(e.target.value)}
+              className="glass-input font-medium [color-scheme:dark] text-foreground/80"
             />
           </div>
 
@@ -110,6 +111,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete }) => {
               type="date"
               value={fechaHasta}
               onChange={(e) => setFechaHasta(e.target.value)}
+              className="glass-input font-medium [color-scheme:dark] text-foreground/80"
             />
           </div>
 

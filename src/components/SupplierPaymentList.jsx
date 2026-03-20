@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pencil, Trash2, Loader2, FileText, ExternalLink, Banknote, CreditCard, Search, Calendar, Clock, Building2 } from 'lucide-react';
+import { Pencil, Trash2, Loader2, FileText, ExternalLink, Banknote, CreditCard, Search, Calendar, Clock, Building2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
   const [editingPayment, setEditingPayment] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
 
   // Filtros
   const [fechaDesde, setFechaDesde] = useState('');
@@ -248,7 +249,18 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
     <Card className="glass-card">
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <CardTitle>Historial de Pagos</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Historial de Pagos</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsHistoryCollapsed(!isHistoryCollapsed)}
+              className="h-8 w-8 text-muted-foreground hover:text-primary transition-colors"
+              title={isHistoryCollapsed ? "Mostrar historial" : "Ocultar historial"}
+            >
+              {isHistoryCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            </Button>
+          </div>
           <div className="w-full md:w-56">
             <CajaSelector
               value={globalCajaId}
@@ -262,217 +274,231 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
         </div>
 
         {/* Filtros */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <div className="space-y-1">
-            <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
-              <Calendar className="h-3 w-3 text-primary/70" /> Desde
-            </Label>
-            <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="h-9 text-sm glass-input font-medium [color-scheme:dark]" />
+        {!isHistoryCollapsed && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
+                <Calendar className="h-3 w-3 text-primary/70" /> Desde
+              </Label>
+              <Input 
+                type="date" 
+                value={fechaDesde} 
+                onChange={(e) => setFechaDesde(e.target.value)} 
+                className="h-9 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80" 
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
+                <Calendar className="h-3 w-3 text-primary/70" /> Hasta
+              </Label>
+              <Input 
+                type="date" 
+                value={fechaHasta} 
+                onChange={(e) => setFechaHasta(e.target.value)} 
+                className="h-9 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80" 
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3" /> Turno
+              </Label>
+              <Select value={turnoFiltro} onValueChange={setTurnoFiltro}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-shifts">Todos los turnos</SelectItem>
+                  <SelectItem value="Mañana">Mañana</SelectItem>
+                  <SelectItem value="Tarde">Tarde</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1 text-muted-foreground">
+                <Building2 className="h-3 w-3" /> Proveedor
+              </Label>
+              <Select value={proveedorFiltro} onValueChange={setProveedorFiltro}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los proveedores</SelectItem>
+                  {listadoProveedores.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1 text-muted-foreground">
+                <CreditCard className="h-3 w-3" /> Método de Pago
+              </Label>
+              <Select value={metodoFiltro} onValueChange={setMetodoFiltro}>
+                <SelectTrigger className="h-9 text-sm glass-input">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los métodos</SelectItem>
+                  <SelectItem value="caja">Efectivo (Caja)</SelectItem>
+                  <SelectItem value="cuenta_corriente">Cuenta Corriente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
-              <Calendar className="h-3 w-3 text-primary/70" /> Hasta
-            </Label>
-            <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="h-9 text-sm glass-input font-medium [color-scheme:dark]" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs flex items-center gap-1 text-muted-foreground">
-              <Clock className="h-3 w-3" /> Turno
-            </Label>
-            <Select value={turnoFiltro} onValueChange={setTurnoFiltro}>
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-shifts">Todos los turnos</SelectItem>
-                <SelectItem value="Mañana">Mañana</SelectItem>
-                <SelectItem value="Tarde">Tarde</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs flex items-center gap-1 text-muted-foreground">
-              <Building2 className="h-3 w-3" /> Proveedor
-            </Label>
-            <Select value={proveedorFiltro} onValueChange={setProveedorFiltro}>
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los proveedores</SelectItem>
-                {listadoProveedores.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs flex items-center gap-1 text-muted-foreground">
-              <CreditCard className="h-3 w-3" /> Método de Pago
-            </Label>
-            <Select value={metodoFiltro} onValueChange={setMetodoFiltro}>
-              <SelectTrigger className="h-9 text-sm glass-input">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los métodos</SelectItem>
-                <SelectItem value="caja">Efectivo (Caja)</SelectItem>
-                <SelectItem value="cuenta_corriente">Cuenta Corriente</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        )}
       </CardHeader>
 
-      <CardContent className="p-0">
-        {loading ? (
-          <div className="flex flex-col justify-center items-center py-16 text-muted-foreground gap-3">
-            <Loader2 className="animate-spin text-primary w-8 h-8" />
-            <p>Cargando registros...</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border hover:bg-transparent">
-                    <TableHead className="px-4">Fecha</TableHead>
-                    <TableHead>Turno</TableHead>
-                    <TableHead>Proveedor</TableHead>
-                    <TableHead>Caja</TableHead>
-                    <TableHead>Tipo Pago</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
-                    <TableHead>Comprobante</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                        <div className="flex flex-col items-center gap-2">
-                          <FileText className="h-8 w-8 opacity-20" />
-                          <p>No se encontraron pagos para los filtros aplicados.</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    payments.map(p => {
-                      const tipoPago = getTipoPago(p);
-                      const esEfectivo = tipoPago === 'efectivo' || tipoPago === 'caja';
-                      
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      const esFuturo = p.fecha_pago > todayStr;
-
-                      return (
-                        <TableRow 
-                          key={p.id} 
-                          className={`border-border/50 transition-colors ${
-                            esFuturo 
-                              ? 'bg-blue-500/5 hover:bg-blue-500/10' 
-                              : 'hover:bg-secondary/40'
-                          }`}
-                        >
-                          <TableCell className="px-4 whitespace-nowrap font-medium">{p.fecha_pago}</TableCell>
-                          <TableCell className="text-muted-foreground">{p.turno}</TableCell>
-                          <TableCell className="font-medium">{p.proveedores?.nombre || '—'}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {!esEfectivo 
-                              ? 'Cuenta Corriente' 
-                              : (p.cajas?.nombre || (p.cajas?.numero_caja ? `Caja ${p.cajas.numero_caja}` : '—'))
-                            }
-                          </TableCell>
-                          <TableCell>
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded border ${
-                              esEfectivo
-                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                                : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                            }`}>
-                              {esEfectivo
-                                ? <><Banknote className="h-3 w-3" /> Efectivo</>
-                                : <><CreditCard className="h-3 w-3" /> Cta. Corriente</>
-                              }
-                            </span>
-                            {esFuturo && (
-                              <span className="block mt-1 text-[10px] text-blue-400/70 font-medium uppercase tracking-wider">
-                                Planificado
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold whitespace-nowrap">
-                            {formatCurrency(p.monto_pagado)}
-                          </TableCell>
-                          <TableCell>
-                            {p.comprobante_url ? (
-                              <a
-                                href={p.comprobante_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary hover:text-primary/80 flex items-center gap-1.5 text-xs bg-primary/5 hover:bg-primary/10 px-2 py-1 rounded border border-primary/20 w-fit transition-all"
-                              >
-                                <FileText className="h-3.5 w-3.5 text-red-400" />
-                                <span className="truncate max-w-[80px]">{p.comprobante_nombre || 'Ver'}</span>
-                                <ExternalLink className="h-3 w-3 opacity-50" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground text-xs italic opacity-60">Sin archivo</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setEditingPayment({ ...p });
-                                  setIsEditModalOpen(true);
-                                }}
-                                className="text-amber-400 hover:text-amber-500 hover:bg-amber-500/10 h-8 w-8"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setConfirmDeleteId(p.id)}
-                                className="text-red-400 hover:text-red-500 hover:bg-red-500/10 h-8 w-8"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+      {!isHistoryCollapsed && (
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex flex-col justify-center items-center py-16 text-muted-foreground gap-3">
+              <Loader2 className="animate-spin text-primary w-8 h-8" />
+              <p>Cargando registros...</p>
             </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border hover:bg-transparent">
+                      <TableHead className="px-4">Fecha</TableHead>
+                      <TableHead>Turno</TableHead>
+                      <TableHead>Proveedor</TableHead>
+                      <TableHead>Caja</TableHead>
+                      <TableHead>Tipo Pago</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead>Comprobante</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                          <div className="flex flex-col items-center gap-2">
+                            <FileText className="h-8 w-8 opacity-20" />
+                            <p>No se encontraron pagos para los filtros aplicados.</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      payments.map(p => {
+                        const tipoPago = getTipoPago(p);
+                        const esEfectivo = tipoPago === 'efectivo' || tipoPago === 'caja';
+                        
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const esFuturo = p.fecha_pago > todayStr;
 
-            {/* Totales al pie */}
-            {payments.length > 0 && (
-              <div className="border-t border-border/50 bg-secondary/20 p-4">
-                <div className="flex flex-wrap gap-4 justify-end items-center">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Banknote className="h-4 w-4 text-amber-400" />
-                    <span className="text-muted-foreground">Total Efectivo:</span>
-                    <span className="font-bold text-amber-400">{formatCurrency(totalEfectivo)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <CreditCard className="h-4 w-4 text-blue-400" />
-                    <span className="text-muted-foreground">Total Cta. Corriente:</span>
-                    <span className="font-bold text-blue-400">{formatCurrency(totalCC)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm border-l border-border pl-4">
-                    <span className="text-muted-foreground">Total General:</span>
-                    <span className="font-bold text-foreground text-base">{formatCurrency(totalGeneral)}</span>
+                        return (
+                          <TableRow 
+                            key={p.id} 
+                            className={`border-border/50 transition-colors ${
+                              esFuturo 
+                                ? 'bg-blue-500/5 hover:bg-blue-500/10' 
+                                : 'hover:bg-secondary/40'
+                            }`}
+                          >
+                            <TableCell className="px-4 whitespace-nowrap font-medium">{p.fecha_pago}</TableCell>
+                            <TableCell className="text-muted-foreground">{p.turno}</TableCell>
+                            <TableCell className="font-medium">{p.proveedores?.nombre || '—'}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {!esEfectivo 
+                                ? 'Cuenta Corriente' 
+                                : (p.cajas?.nombre || (p.cajas?.numero_caja ? `Caja ${p.cajas.numero_caja}` : '—'))
+                              }
+                            </TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded border ${
+                                esEfectivo
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                  : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                              }`}>
+                                {esEfectivo
+                                  ? <><Banknote className="h-3 w-3" /> Efectivo</>
+                                  : <><CreditCard className="h-3 w-3" /> Cta. Corriente</>
+                                }
+                              </span>
+                              {esFuturo && (
+                                <span className="block mt-1 text-[10px] text-blue-400/70 font-medium uppercase tracking-wider">
+                                  Planificado
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold whitespace-nowrap">
+                              {formatCurrency(p.monto_pagado)}
+                            </TableCell>
+                            <TableCell>
+                              {p.comprobante_url ? (
+                                <a
+                                  href={p.comprobante_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:text-primary/80 flex items-center gap-1.5 text-xs bg-primary/5 hover:bg-primary/10 px-2 py-1 rounded border border-primary/20 w-fit transition-all"
+                                >
+                                  <FileText className="h-3.5 w-3.5 text-red-400" />
+                                  <span className="truncate max-w-[80px]">{p.comprobante_nombre || 'Ver'}</span>
+                                  <ExternalLink className="h-3 w-3 opacity-50" />
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground text-xs italic opacity-60">Sin archivo</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setEditingPayment({ ...p });
+                                    setIsEditModalOpen(true);
+                                  }}
+                                  className="text-amber-400 hover:text-amber-500 hover:bg-amber-500/10 h-8 w-8"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setConfirmDeleteId(p.id)}
+                                  className="text-red-400 hover:text-red-500 hover:bg-red-500/10 h-8 w-8"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Totales al pie */}
+              {payments.length > 0 && (
+                <div className="border-t border-border/50 bg-secondary/20 p-4">
+                  <div className="flex flex-wrap gap-4 justify-end items-center">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Banknote className="h-4 w-4 text-amber-400" />
+                      <span className="text-muted-foreground">Total Efectivo:</span>
+                      <span className="font-bold text-amber-400">{formatCurrency(totalEfectivo)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CreditCard className="h-4 w-4 text-blue-400" />
+                      <span className="text-muted-foreground">Total Cta. Corriente:</span>
+                      <span className="font-bold text-blue-400">{formatCurrency(totalCC)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm border-l border-border pl-4">
+                      <span className="text-muted-foreground">Total General:</span>
+                      <span className="font-bold text-foreground text-base">{formatCurrency(totalGeneral)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
+              )}
+            </>
+          )}
+        </CardContent>
+      )}
 
       {/* Dialog confirmación eliminación */}
       <Dialog open={!!confirmDeleteId} onOpenChange={(open) => !open && setConfirmDeleteId(null)}>
@@ -539,7 +565,7 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
                     type="date" 
                     value={editingPayment.fecha_pago} 
                     onChange={(e) => setEditingPayment({...editingPayment, fecha_pago: e.target.value})}
-                    className="glass-input"
+                    className="glass-input font-medium [color-scheme:dark] text-foreground/80"
                   />
                 </div>
                 <div className="space-y-1">

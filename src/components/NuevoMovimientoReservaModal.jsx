@@ -248,7 +248,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
                 type="date" 
                 value={formData.fecha} 
                 onChange={e => setFormData(prev => ({ ...prev, fecha: e.target.value }))} 
-                className="glass-input h-9" 
+                className="glass-input h-9 font-medium [color-scheme:dark] text-foreground/80" 
                 required 
               />
             </div>

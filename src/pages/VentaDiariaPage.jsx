@@ -475,7 +475,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
                     type="date"
                     value={fecha}
                     onChange={(e) => setFecha(e.target.value)}
-                    className="border-2 border-primary/50 focus:border-primary bg-primary/10 font-bold text-foreground"
+                    className="glass-input font-medium [color-scheme:dark] text-foreground/80"
                   />
                 </div>
 

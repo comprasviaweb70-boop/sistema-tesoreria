@@ -273,7 +273,7 @@ export default function ReservaPage() {
                   type="date"
                   value={fechaInicio}
                   onChange={(e) => setFechaInicio(e.target.value)}
-                  className="glass-input pl-9 w-[180px]"
+                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
                 />
               </div>
             </div>
@@ -285,7 +285,7 @@ export default function ReservaPage() {
                   type="date"
                   value={fechaFin}
                   onChange={(e) => setFechaFin(e.target.value)}
-                  className="glass-input pl-9 w-[180px]"
+                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
                 />
               </div>
             </div>

@@ -247,7 +247,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
               <Input
                 type="date" value={formData.fecha}
                 onChange={(e) => handleChange('fecha', e.target.value)}
-                required className="bg-background text-foreground"
+                required className="glass-input font-medium [color-scheme:dark] text-foreground/80"
               />
             </div>
 

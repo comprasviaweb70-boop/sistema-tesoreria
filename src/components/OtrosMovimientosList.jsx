@@ -150,11 +150,11 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Desde</Label>
-            <Input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="h-8 text-sm"/>
+            <Input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="h-8 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80"/>
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Hasta</Label>
-            <Input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="h-8 text-sm"/>
+            <Input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="h-8 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80"/>
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3"/>Turno</Label>

@@ -281,7 +281,7 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
                 value={formData.fecha_pago}
                 onChange={(e) => handleChange('fecha_pago', e.target.value)}
                 required
-                className="bg-background text-foreground"
+                className="glass-input font-medium [color-scheme:dark] text-foreground/80"
               />
             </div>
 
