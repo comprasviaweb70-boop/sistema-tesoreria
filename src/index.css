@@ -1,0 +1,96 @@
+
+@import './styles/glassmorphism.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Using HSL values corresponding to requested colors */
+    /* Primary: #F59E0B (Naranja/Dorado) -> 38 92% 50% */
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Background: #0F172A (Azul marino muy oscuro) -> 222 47% 11% */
+    --background: 222 47% 11%;
+    
+    /* Foreground: #F8FAFC (Blanco/Gris claro) -> 210 40% 98% */
+    --foreground: 210 40% 98%;
+    
+    /* Secondary/Card: #1E293B (Azul marino) -> 217 33% 17% */
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    
+    /* Muted: #64748B (Gris) -> 215 16% 47% */
+    --muted: 215 16% 47%;
+    --muted-foreground: 215 20.2% 65.1%;
+    
+    /* Accent: same as primary */
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Border: #475569 (Gris azulado) -> 215 19% 35% */
+    --border: 215 19% 35%;
+    --input: 215 19% 35%;
+    --ring: 38 92% 50%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 100%;
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --muted: 215 16% 47%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 19% 35%;
+    --input: 215 19% 35%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: clip;
+  }
+}
+
+/* Base table styles for glassmorphism override */
+.glass-table-container th {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+  color: hsl(var(--foreground)) !important;
+  border-bottom: 1px solid rgba(71, 85, 99, 0.4);
+}
+.glass-table-container td {
+  border-bottom: 1px solid rgba(71, 85, 99, 0.2);
+  color: hsl(var(--foreground));
+}
+.glass-table-container tr:hover td {
+  background-color: rgba(30, 41, 59, 0.4);
+}
