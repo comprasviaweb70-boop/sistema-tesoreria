@@ -164,7 +164,6 @@ export default function ReservaPage() {
   }, [movimientos]);
 
   const filteredMovements = useMemo(() => {
-    if (!searchTerm) return detailedMovements;
     const lowerSearch = searchTerm.toLowerCase();
     return detailedMovements.filter(mov => {
       const cajaNombre = mov.cajas?.nombre?.toLowerCase() || '';
