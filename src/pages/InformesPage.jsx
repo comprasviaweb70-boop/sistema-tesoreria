@@ -42,6 +42,8 @@ const InformesPage = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [diariaData, setDiariaData] = useState([]);
+  const [reservaMovimientos, setReservaMovimientos] = useState([]);
+  const [cajas, setCajas] = useState([]);
   const [categorias, setCategorias] = useState({});
 
   const fetchCategorias = async () => {
@@ -86,10 +88,29 @@ const InformesPage = () => {
         .order('fecha', { ascending: false });
 
       if (dError) throw dError;
+      
+      // 4. Fetch Reserva Movimientos
+      const { data: rData, error: rError } = await supabase
+        .from('reserva_movimientos')
+        .select('*')
+        .gte('fecha', fechaInicio)
+        .lte('fecha', fechaFin)
+        .order('fecha', { ascending: false });
+
+      if (rError) throw rError;
+
+      // 5. Fetch Cajas
+      const { data: cData, error: cError } = await supabase
+        .from('cajas')
+        .select('id, nombre');
+      
+      if (cError) throw cError;
 
       setMovimientos(mData || []);
       setPagos(pData || []);
       setDiariaData(dData || []);
+      setReservaMovimientos(rData || []);
+      setCajas(cData || []);
     } catch (err) {
       console.error('Error fetching report data:', err);
     } finally {
@@ -144,43 +165,45 @@ const InformesPage = () => {
       const isCorrection = catName.includes('correcci') || catName.includes('correccion') || catName.includes('corrección');
       
       if (isCorrection) {
-        if (!acc[curr.fecha]) acc[curr.fecha] = { cash: 0, card: 0 };
+        const key = `${curr.fecha}_${curr.caja_id || 'RESERVA'}`;
+        if (!acc[key]) acc[key] = { cash: 0, card: 0 };
         const monto = parseFloat(curr.monto) || 0;
         
-        // Lógica de cruce basada en el nombre de la categoría
         if (catName.includes('debito por efectivo') || catName.includes('débito por efectivo')) {
-          // "Venta que era Débito pero se ingresó como Efectivo"
           if (curr.tipo === 'egreso') {
-            acc[curr.fecha].cash -= monto;
-            acc[curr.fecha].card += monto;
+            acc[key].cash -= monto;
+            acc[key].card += monto;
           } else {
-            acc[curr.fecha].cash += monto;
-            acc[curr.fecha].card -= monto;
+            acc[key].cash += monto;
+            acc[key].card -= monto;
           }
         } else if (catName.includes('efectivo por debito') || catName.includes('efectivo por débito')) {
-          // "Venta que era Efectivo pero se ingresó como Débito"
           if (curr.tipo === 'ingreso') {
-            acc[curr.fecha].cash += monto;
-            acc[curr.fecha].card -= monto;
+            acc[key].cash += monto;
+            acc[key].card -= monto;
           } else {
-            acc[curr.fecha].cash -= monto;
-            acc[curr.fecha].card += monto;
+            acc[key].cash -= monto;
+            acc[key].card += monto;
           }
         } else {
-          // Corrección genérica: aplicar regla de signo a efectivo por defecto
           const signado = curr.tipo === 'ingreso' ? monto : -monto;
-          acc[curr.fecha].cash += signado;
+          acc[key].cash += signado;
         }
       }
       return acc;
     }, {});
 
-    // 2. Agrupar datos de venta_diaria por fecha
-    const groups = diariaData.reduce((acc, curr) => {
-      if (!acc[curr.fecha]) {
-        acc[curr.fecha] = {
+    // 2. Agrupar datos de venta_diaria por fecha y caja/turno
+    const perBoxGroups = diariaData.reduce((acc, curr) => {
+      const cajaNombre = cajas.find(c => c.id === curr.caja_id)?.nombre || `Caja ${curr.caja_id?.split('-')[0] || '?'}`;
+      const groupKey = `${curr.fecha}_${curr.caja_id}_${curr.turno}`;
+      
+      if (!acc[groupKey]) {
+        acc[groupKey] = {
           fecha: curr.fecha,
-          cajero: 'TOTAL',
+          caja_id: curr.caja_id,
+          turno: curr.turno,
+          cajero: cajaNombre,
           base_efectivo_neta: 0,
           base_card: 0,
           edenred: 0,
@@ -196,44 +219,132 @@ const InformesPage = () => {
         };
       }
       
-      acc[curr.fecha].base_efectivo_neta += (parseFloat(curr.venta_efectivo) || 0) - (parseFloat(curr.vuelta) || 0);
-      acc[curr.fecha].base_card += (parseFloat(curr.redelcom) || 0) + (parseFloat(curr.tarjeta_credito) || 0);
-      acc[curr.fecha].edenred += (parseFloat(curr.edenred) || 0);
-      acc[curr.fecha].transferencia += (parseFloat(curr.transferencia) || 0);
-      acc[curr.fecha].credito += (parseFloat(curr.credito) || 0);
-      acc[curr.fecha].pago_facturas_caja += (parseFloat(curr.pago_facturas_caja) || 0);
-      acc[curr.fecha].pago_facturas_ctacte += (parseFloat(curr.pago_facturas_cc) || 0);
-      acc[curr.fecha].gastos_rrhh_otros += 
+      acc[groupKey].base_efectivo_neta += (parseFloat(curr.venta_efectivo) || 0) - (parseFloat(curr.vuelta) || 0);
+      acc[groupKey].base_card += (parseFloat(curr.redelcom) || 0) + (parseFloat(curr.tarjeta_credito) || 0);
+      acc[groupKey].edenred += (parseFloat(curr.edenred) || 0);
+      acc[groupKey].transferencia += (parseFloat(curr.transferencia) || 0);
+      acc[groupKey].credito += (parseFloat(curr.credito) || 0);
+      acc[groupKey].pago_facturas_caja += (parseFloat(curr.pago_facturas_caja) || 0);
+      acc[groupKey].pago_facturas_ctacte += (parseFloat(curr.pago_facturas_cc) || 0);
+      acc[groupKey].gastos_rrhh_otros += 
         (parseFloat(curr.gastos_rrhh) || 0) + (parseFloat(curr.servicios) || 0) + 
         (parseFloat(curr.gastos) || 0) + (parseFloat(curr.otros_egresos) || 0);
-      acc[curr.fecha].diferencia_caja += (parseFloat(curr.diferencia_caja) || 0);
+      acc[groupKey].diferencia_caja += (parseFloat(curr.diferencia_caja) || 0);
       
       if (curr.turno === 'Tarde') {
-        acc[curr.fecha].cierre_caja += (parseFloat(curr.cierre_declarado_pdf) || 0);
+        acc[groupKey].cierre_caja += (parseFloat(curr.cierre_declarado_pdf) || 0);
       }
-      acc[curr.fecha].ingreso_reserva += (parseFloat(curr.traspaso_tesoreria_ingreso) || 0);
-      acc[curr.fecha].retiro_reserva += (parseFloat(curr.traspaso_tesoreria_egreso) || 0);
+      acc[groupKey].ingreso_reserva += (parseFloat(curr.traspaso_tesoreria_ingreso) || 0);
+      acc[groupKey].retiro_reserva += (parseFloat(curr.traspaso_tesoreria_egreso) || 0);
       
       return acc;
     }, {});
 
-    // 3. Finalizar totales ajustados
-    return Object.values(groups).map(day => {
-      const adj = adjustments[day.fecha] || { cash: 0, card: 0 };
+    // 3. Agrupar movimientos de RESERVA directos (sin caja_id)
+    const reservaGroups = reservaMovimientos.reduce((acc, curr) => {
+      if (curr.caja_id) return acc; // Saltar los que ya están en venta_diaria
+
+      const groupKey = `${curr.fecha}_RESERVA_${curr.turno}`;
+      if (!acc[groupKey]) {
+        acc[groupKey] = {
+          fecha: curr.fecha,
+          caja_id: 'RESERVA',
+          turno: curr.turno,
+          cajero: 'RESERVA',
+          base_efectivo_neta: 0,
+          base_card: 0,
+          edenred: 0,
+          transferencia: 0,
+          credito: 0,
+          pago_facturas_caja: 0,
+          pago_facturas_ctacte: 0,
+          gastos_rrhh_otros: 0,
+          diferencia_caja: 0,
+          cierre_caja: 0,
+          ingreso_reserva: 0,
+          retiro_reserva: 0
+        };
+      }
+
+      const monto = parseFloat(curr.monto_total) || 0;
+      if (curr.tipo === 'egreso') {
+        acc[groupKey].gastos_rrhh_otros += monto;
+      } else {
+        // Ingresos directos a reserva (ej: Giro Cta Cte)
+        acc[groupKey].base_efectivo_neta += monto; // Mostrar como 'efectivo' para simplificar o dejar en 0 si no es venta
+      }
       
-      const ventaEfectivoFinal = day.base_efectivo_neta + adj.cash;
-      const cardFinal = day.base_card + adj.card;
-      const totalVentasFinal = ventaEfectivoFinal + cardFinal + day.edenred + day.transferencia + day.credito;
+      return acc;
+    }, {});
+
+    const allGroups = { ...perBoxGroups, ...reservaGroups };
+
+    // 4. Finalizar totales ajustados y agregar filas de TOTAL diario
+    const rows = Object.values(allGroups).map(entry => {
+      const adjKey = `${entry.fecha}_${entry.caja_id}`;
+      const adj = adjustments[adjKey] || { cash: 0, card: 0 };
+      
+      const ventaEfectivoFinal = entry.base_efectivo_neta + adj.cash;
+      const cardFinal = entry.base_card + adj.card;
+      const totalVentasFinal = ventaEfectivoFinal + cardFinal + entry.edenred + entry.transferencia + entry.credito;
 
       return {
-        ...day,
+        ...entry,
         venta_efectivo: ventaEfectivoFinal,
         redelcom: cardFinal,
         total_ventas: totalVentasFinal,
-        pago_facturas_ctacte: day.pago_facturas_ctacte
       };
-    }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  }, [diariaData, movimientos, categorias]);
+    });
+
+    // 5. Generar filas de TOTAL por fecha
+    const dailyTotals = rows.reduce((acc, curr) => {
+      if (!acc[curr.fecha]) {
+        acc[curr.fecha] = {
+          fecha: curr.fecha,
+          cajero: 'TOTAL DÍA',
+          isTotalLine: true,
+          venta_efectivo: 0,
+          redelcom: 0,
+          edenred: 0,
+          transferencia: 0,
+          credito: 0,
+          total_ventas: 0,
+          pago_facturas_caja: 0,
+          pago_facturas_ctacte: 0,
+          gastos_rrhh_otros: 0,
+          diferencia_caja: 0,
+          cierre_caja: 0,
+          ingreso_reserva: 0,
+          retiro_reserva: 0
+        };
+      }
+      
+      acc[curr.fecha].venta_efectivo += curr.venta_efectivo;
+      acc[curr.fecha].redelcom += curr.redelcom;
+      acc[curr.fecha].edenred += curr.edenred;
+      acc[curr.fecha].transferencia += curr.transferencia;
+      acc[curr.fecha].credito += curr.credito;
+      acc[curr.fecha].total_ventas += curr.total_ventas;
+      acc[curr.fecha].pago_facturas_caja += curr.pago_facturas_caja;
+      acc[curr.fecha].pago_facturas_ctacte += curr.pago_facturas_ctacte;
+      acc[curr.fecha].gastos_rrhh_otros += curr.gastos_rrhh_otros;
+      acc[curr.fecha].diferencia_caja += curr.diferencia_caja;
+      acc[curr.fecha].cierre_caja += curr.cierre_caja;
+      acc[curr.fecha].ingreso_reserva += curr.ingreso_reserva;
+      acc[curr.fecha].retiro_reserva += curr.retiro_reserva;
+      
+      return acc;
+    }, {});
+
+    // Combinar y ordenar
+    const finalResult = [...rows, ...Object.values(dailyTotals)];
+    return finalResult.sort((a, b) => {
+      if (a.fecha !== b.fecha) return new Date(b.fecha) - new Date(a.fecha);
+      if (a.isTotalLine) return 1;
+      if (b.isTotalLine) return -1;
+      return a.cajero.localeCompare(b.cajero);
+    });
+  }, [diariaData, reservaMovimientos, movimientos, categorias, cajas]);
 
 
 
@@ -390,9 +501,13 @@ const InformesPage = () => {
                     ) : (
                       dailyBalances.map((day) => {
                         return (
-                          <TableRow key={day.fecha} className="hover:bg-secondary/10 transition-colors border-b border-border/50">
-                            <TableCell className="font-mono">{new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</TableCell>
-                            <TableCell>{day.cajero}</TableCell>
+                          <TableRow key={day.fecha + day.cajero + (day.turno || '')} className={`hover:bg-secondary/10 transition-colors border-b border-border/50 ${day.isTotalLine ? 'bg-primary/5 font-extrabold' : ''}`}>
+                            <TableCell className="font-mono">
+                              {day.isTotalLine ? '' : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
+                            </TableCell>
+                            <TableCell className={day.isTotalLine ? 'text-primary' : (day.cajero === 'RESERVA' ? 'text-amber-500 italic' : '')}>
+                              {day.cajero} {day.turno ? `(${day.turno[0]})` : ''}
+                            </TableCell>
                             <TableCell className="text-right">$ {day.venta_efectivo.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right">$ {day.redelcom.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right">$ {day.edenred.toLocaleString('es-CL')}</TableCell>
@@ -406,8 +521,12 @@ const InformesPage = () => {
                               {day.diferencia_caja > 0 ? '+' : ''} $ {day.diferencia_caja.toLocaleString('es-CL')}
                             </TableCell>
                             <TableCell className="text-right font-bold bg-secondary/5">$ {day.cierre_caja.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right text-green-500">$ {day.ingreso_reserva.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right text-red-500">$ {day.retiro_reserva.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className="text-right text-green-500 items-center justify-end gap-1">
+                              {day.ingreso_reserva > 0 && <span>$ {day.ingreso_reserva.toLocaleString('es-CL')}</span>}
+                            </TableCell>
+                            <TableCell className="text-right text-red-500 items-center justify-end gap-1">
+                              {day.retiro_reserva > 0 && <span>$ {day.retiro_reserva.toLocaleString('es-CL')}</span>}
+                            </TableCell>
                           </TableRow>
                         );
                       })
