@@ -375,23 +375,24 @@ export default function ReservaPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-              <label className="text-[10px] text-muted-foreground uppercase font-bold">Caja:</label>
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Caja:</label>
               <CajaSelector 
                 value={filterCaja} 
                 onChange={setFilterCaja} 
                 showAllOption={true} 
                 allOptionLabel="TODAS"
-                className="w-[120px] h-7 space-y-0"
+                label={null}
+                className="w-[110px] space-y-0"
               />
             </div>
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-              <label className="text-[10px] text-muted-foreground uppercase font-bold">Fecha:</label>
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Fecha:</label>
               <Input
                 type="date"
                 value={filterFecha}
                 onChange={(e) => setFilterFecha(e.target.value)}
-                className="h-7 w-[130px] text-[11px] glass-input bg-white/5 font-medium [color-scheme:dark]"
+                className="h-7 w-[125px] text-[11px] glass-input bg-white/5 font-medium [color-scheme:dark] px-2"
               />
             </div>
             <div className="relative" onClick={(e) => e.stopPropagation()}>
