@@ -422,6 +422,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
       if (filters.fechaDesde) query = query.gte('fecha', filters.fechaDesde);
       if (filters.fechaHasta) query = query.lte('fecha', filters.fechaHasta);
       if (filters.cajeroId && filters.cajeroId !== 'all-users') query = query.eq('cajero_id', filters.cajeroId);
+      if (filters.cajaId && filters.cajaId !== 'all-cajas') query = query.eq('caja_id', filters.cajaId);
       if (filters.turno && filters.turno !== 'all-shifts') query = query.eq('turno', filters.turno);
 
       const { data, error } = await query;

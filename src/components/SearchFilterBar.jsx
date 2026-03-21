@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Calendar, User, Clock, Trash2, AlertCircle } from 'lucide-react';
+import { Search, Calendar, User, Clock, Trash2, AlertCircle, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,13 +21,49 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
   const [fechaHasta, setFechaHasta] = useState('');
   const [cajeroId, setCajeroId] = useState('all-users');
   const [turno, setTurno] = useState('all-shifts');
+  const [cajaId, setCajaId] = useState('all-cajas');
   const [cajeros, setCajeros] = useState([]);
+  const [cajas, setCajas] = useState([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchCajeros();
+    fetchCajas();
   }, []);
+
+  const fetchCajas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cajas')
+        .select('id, nombre')
+        .eq('activo', true)
+        .order('nombre');
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        setCajas(data);
+      } else {
+        // Fallback to usuarios with role 'cajero' if no boxes defined (same logic as CajaSelector)
+        const { data: userData, error: userError } = await supabase
+          .from('usuarios')
+          .select('id, nombre, nombre_completo')
+          .ilike('rol', 'cajero')
+          .order('nombre');
+        
+        if (userError) throw userError;
+        
+        const transformed = (userData || []).map(u => ({
+          id: u.id,
+          nombre: u.nombre || u.nombre_completo
+        }));
+        setCajas(transformed);
+      }
+    } catch (error) {
+      console.error('Error fetching cajas:', error);
+    }
+  };
 
   const fetchCajeros = async () => {
     try {
@@ -47,6 +83,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
       fechaDesde,
       fechaHasta,
       cajeroId: cajeroId === 'all-users' ? '' : cajeroId,
+      cajaId: cajaId === 'all-cajas' ? '' : cajaId,
       turno: turno === 'all-shifts' ? '' : turno,
     });
   };
@@ -55,6 +92,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
     setFechaDesde('');
     setFechaHasta('');
     setCajeroId('all-users');
+    setCajaId('all-cajas');
     setTurno('all-shifts');
     onSearch({});
   };
@@ -86,7 +124,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
     <div className="space-y-4">
       {/* Filtros */}
       <div className="glass-card p-4 transition-all duration-300">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="space-y-2">
             <Label htmlFor="fechaDesde" className="text-sm font-medium flex items-center gap-2">
               <Calendar className="h-4 w-4 accent-text" />
@@ -136,6 +174,26 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="caja-filter" className="text-sm font-medium flex items-center gap-2">
+              <LayoutDashboard className="h-4 w-4 accent-text" />
+              Caja
+            </Label>
+            <Select value={cajaId} onValueChange={(v) => v && setCajaId(v)}>
+              <SelectTrigger id="caja-filter">
+                <SelectValue placeholder="Todas las cajas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-cajas">Todas las cajas</SelectItem>
+                {cajas.map((caja) => (
+                  <SelectItem key={caja.id} value={caja.id}>
+                    {caja.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="turno" className="text-sm font-medium flex items-center gap-2">
               <Clock className="h-4 w-4 accent-text" />
               Turno
@@ -154,11 +212,11 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
           </div>
 
           <div className="flex items-end gap-2">
-            <Button onClick={handleSearch} className="flex-1 accent-button">
-              <Search className="mr-2 h-4 w-4" />
+            <Button onClick={handleSearch} className="flex-1 accent-button px-2">
+              <Search className="mr-1 h-4 w-4" />
               Buscar
             </Button>
-            <Button onClick={handleReset} variant="outline" className="border-border text-foreground hover:bg-secondary/50">
+            <Button onClick={handleReset} variant="outline" className="border-border text-foreground hover:bg-secondary/50 px-2">
               Reset
             </Button>
           </div>
@@ -178,6 +236,7 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="font-semibold">Fecha</TableHead>
+                  <TableHead className="font-semibold">Caja</TableHead>
                   <TableHead className="font-semibold">Turno</TableHead>
                   <TableHead className="font-semibold">Estado</TableHead>
                   <TableHead className="font-semibold text-right">Saldo Inicial</TableHead>
@@ -189,7 +248,10 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
               <TableBody>
                 {results.map((rec) => (
                   <TableRow key={rec.id} className="hover:bg-secondary/30 transition-colors">
-                    <TableCell className="font-medium">{rec.fecha}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{rec.fecha}</TableCell>
+                    <TableCell className="font-medium text-primary">
+                      {cajas.find(c => c.id === rec.caja_id)?.nombre || rec.caja_id || '-'}
+                    </TableCell>
                     <TableCell>{rec.turno}</TableCell>
                     <TableCell>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
