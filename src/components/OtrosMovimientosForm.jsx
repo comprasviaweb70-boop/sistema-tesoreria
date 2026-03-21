@@ -163,6 +163,25 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
 
     setLoading(true);
     try {
+      // Check for duplicates
+      const { data: duplicates, error: dupError } = await supabase
+        .from('otros_movimientos')
+        .select('id')
+        .eq('fecha', formData.fecha)
+        .eq('monto', monto)
+        .eq('tipo', formData.tipo)
+        .limit(1);
+      
+      if (dupError) throw dupError;
+      
+      if (duplicates && duplicates.length > 0) {
+        const confirmDup = window.confirm(`¡Atención! Ya existe un ${formData.tipo} registrado hoy por $${monto.toLocaleString('es-CL')}. ¿Deseas registrar este movimiento de todas formas?`);
+        if (!confirmDup) {
+          setLoading(false);
+          return;
+        }
+      }
+
       const { error } = await supabase.from('otros_movimientos').insert([{
         fecha: formData.fecha,
         turno: formData.turno,

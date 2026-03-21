@@ -146,6 +146,25 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
 
     setLoading(true);
     try {
+      // Check for duplicates
+      const { data: duplicates, error: dupError } = await supabase
+        .from('pagos_proveedor')
+        .select('id')
+        .eq('fecha_pago', formData.fecha_pago)
+        .eq('monto_pagado', parseFloat(formData.monto_pagado))
+        .eq('proveedor_id', formData.proveedor_id)
+        .limit(1);
+      
+      if (dupError) throw dupError;
+      
+      if (duplicates && duplicates.length > 0) {
+        const confirmDup = window.confirm(`¡Atención! Ya existe un pago registrado hoy a este proveedor por $${parseFloat(formData.monto_pagado).toLocaleString('es-CL')}. ¿Deseas registrar este pago de todas formas?`);
+        if (!confirmDup) {
+          setLoading(false);
+          return;
+        }
+      }
+
       // Sincronizar con venta_diaria (Caja o CC)
       const cajero_id = await syncToVentaDiaria(effectiveCajaId, isCC);
 

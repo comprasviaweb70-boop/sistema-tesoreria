@@ -164,6 +164,27 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
     setLoading(true);
     try {
       const isEdit = !!movimiento;
+
+      // Duplicate check for new movements
+      if (!isEdit) {
+        const { data: duplicates, error: dupError } = await supabase
+          .from('reserva_movimientos')
+          .select('id')
+          .eq('fecha', formData.fecha)
+          .eq('monto_total', totalCalculado)
+          .eq('tipo', formData.tipo)
+          .limit(1);
+
+        if (dupError) throw dupError;
+
+        if (duplicates && duplicates.length > 0) {
+          const confirmDup = window.confirm(`¡Atención! Ya existe un movimiento de reserva (${formData.tipo}) hoy por $${totalCalculado.toLocaleString('es-CL')}. ¿Deseas registrar este movimiento de todas formas?`);
+          if (!confirmDup) {
+            setLoading(false);
+            return;
+          }
+        }
+      }
       
       // Ajustar descripcion y cajaId segun destino especial
       let finalDescripcion = formData.descripcion;
