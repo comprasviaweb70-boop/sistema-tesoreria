@@ -118,6 +118,31 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
   const formatCurrency = (val) =>
     val != null ? `$${parseFloat(val).toLocaleString('es-CL')}` : '-';
 
+  const calculateDiferencia = (rec) => {
+    const saldo_inicial = parseFloat(rec.saldo_inicial) || 0;
+    const efectivo_bruto = parseFloat(rec.venta_efectivo) || 0;
+    const vuelto = parseFloat(rec.vuelta) || 0;
+    const venta_efectiva_neta = efectivo_bruto - vuelto;
+    
+    const traspaso_recibido = parseFloat(rec.traspaso_tesoreria_ingreso) || 0;
+    const entrega_tesoreria = parseFloat(rec.traspaso_tesoreria_egreso) || 0;
+    const subtotal_ingresos = traspaso_recibido + (parseFloat(rec.ingresos_efectivo) || 0);
+
+    const sumEgresosOperativos = 
+      (parseFloat(rec.pago_facturas_caja) || 0) +
+      (parseFloat(rec.gastos_rrhh) || 0) +
+      (parseFloat(rec.servicios) || 0) +
+      (parseFloat(rec.gastos) || 0) +
+      (parseFloat(rec.correccion_boletas) || 0) +
+      (parseFloat(rec.otros_egresos) || 0);
+    
+    const total_egresos = sumEgresosOperativos + entrega_tesoreria;
+    const cierre_caja_sistema = saldo_inicial + venta_efectiva_neta + subtotal_ingresos - total_egresos;
+    const cierre_declarado_pdf = parseFloat(rec.cierre_declarado_pdf) || 0;
+    
+    return cierre_declarado_pdf - cierre_caja_sistema;
+  };
+
   const recordToDelete = results.find((r) => r.id === confirmDeleteId);
 
   return (
@@ -239,9 +264,10 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
                   <TableHead className="font-semibold">Caja</TableHead>
                   <TableHead className="font-semibold">Turno</TableHead>
                   <TableHead className="font-semibold">Estado</TableHead>
-                  <TableHead className="font-semibold text-right">Saldo Inicial</TableHead>
+                   <TableHead className="font-semibold text-right">Saldo Inicial</TableHead>
                   <TableHead className="font-semibold text-right">Total Ventas</TableHead>
                   <TableHead className="font-semibold text-right">Cierre Declarado</TableHead>
+                  <TableHead className="font-semibold text-right">Diferencia</TableHead>
                   <TableHead className="font-semibold text-center w-[80px]">Eliminar</TableHead>
                 </TableRow>
               </TableHeader>
@@ -275,8 +301,19 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
                         <span>{formatCurrency(rec.saldo_inicial)}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(rec.total_ventas)}</TableCell>
+                     <TableCell className="text-right font-mono">{formatCurrency(rec.total_ventas)}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(rec.cierre_declarado_pdf)}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      <span className={
+                        calculateDiferencia(rec) >= 0 && calculateDiferencia(rec) <= 1000 
+                          ? 'text-green-400' 
+                          : calculateDiferencia(rec) > 1000 
+                            ? 'accent-text font-bold' 
+                            : 'text-red-400 font-bold'
+                      }>
+                        {formatCurrency(calculateDiferencia(rec))}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-center">
                       <Button
                         variant="ghost"
