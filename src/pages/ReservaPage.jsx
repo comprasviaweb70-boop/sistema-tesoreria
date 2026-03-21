@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
+import CajaSelector from '@/components/CajaSelector';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/AuthContextObject';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -41,6 +42,8 @@ export default function ReservaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterCaja, setFilterCaja] = useState('all');
+  const [filterFecha, setFilterFecha] = useState('');
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const getStartOfMonthStr = () => {
@@ -170,13 +173,19 @@ export default function ReservaPage() {
       const monto = mov.monto_total?.toString() || '';
       const tipo = mov.tipo?.toLowerCase() || '';
       
-      return descripcion.includes(lowerSearch) || 
+      const matchesSearch = !searchTerm || 
+             descripcion.includes(lowerSearch) || 
              monto.includes(lowerSearch) || 
              tipo.includes(lowerSearch) ||
              cajaNombre.includes(lowerSearch) ||
              cajaNumero.includes(lowerSearch);
+
+      const matchesCaja = filterCaja === 'all' || mov.caja_id === filterCaja;
+      const matchesFecha = !filterFecha || mov.fecha === filterFecha;
+
+      return matchesSearch && matchesCaja && matchesFecha;
     });
-  }, [detailedMovements, searchTerm]);
+  }, [detailedMovements, searchTerm, filterCaja, filterFecha]);
 
   const stockActual = dailyBalances[dailyBalances.length - 1] || {
     saldos: { b20k: 0, b10k: 0, b5k: 0, b2k: 0, b1k: 0, m500: 0, m100: 0, m50: 0, m10: 0 },
@@ -366,17 +375,36 @@ export default function ReservaPage() {
               <CardDescription className="text-xs">Lista completa de ingresos, egresos y responsables.</CardDescription>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <label className="text-[10px] text-muted-foreground uppercase font-bold">Caja:</label>
+              <CajaSelector 
+                value={filterCaja} 
+                onChange={setFilterCaja} 
+                showAllOption={true} 
+                allOptionLabel="TODAS"
+                className="w-[120px] h-7 space-y-0"
+              />
+            </div>
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <label className="text-[10px] text-muted-foreground uppercase font-bold">Fecha:</label>
+              <Input
+                type="date"
+                value={filterFecha}
+                onChange={(e) => setFilterFecha(e.target.value)}
+                className="h-7 w-[130px] text-[11px] glass-input bg-white/5 font-medium [color-scheme:dark]"
+              />
+            </div>
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Buscar..."
+                placeholder="Buscar descripción..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-7 w-[150px] sm:w-[200px] pl-7 text-[11px] glass-input bg-white/5"
+                className="h-7 w-[150px] pl-7 text-[11px] glass-input bg-white/5"
               />
             </div>
-            <Button variant="ghost" size="sm" className="gap-2 shrink-0">
+            <Button variant="ghost" size="sm" className="gap-2 shrink-0 h-7" onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}>
               {isHistoryExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
             </Button>
           </div>

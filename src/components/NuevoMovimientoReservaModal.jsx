@@ -57,9 +57,11 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
     turno: 'Mañana',
     tipo: 'ingreso',
     descripcion: '',
+    b20k: 0, b10k: 0, b5k: 0, b2k: 0, b1k: 0,
     m500: 0, m100: 0, m50: 0, m10: 0
   });
   const [destinoEsp, setDestinoEsp] = useState('caja'); // 'caja', 'deposito', 'personal'
+  const [origenEsp, setOrigenEsp] = useState('caja'); // 'caja', 'cta_cte'
 
   useEffect(() => {
     if (movimiento) {
@@ -87,6 +89,12 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       } else {
         setDestinoEsp('caja');
       }
+
+      if (!movimiento.caja_id && movimiento.tipo === 'ingreso') {
+        if (movimiento.descripcion?.includes('[GIRO CTA CTE]')) setOrigenEsp('cta_cte');
+      } else {
+        setOrigenEsp('caja');
+      }
     } else {
       setFormData({
         fecha: new Date().toISOString().split('T')[0],
@@ -98,6 +106,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       });
       setCajaId('');
       setDestinoEsp('caja');
+      setOrigenEsp('caja');
     }
   }, [movimiento, open]);
 
@@ -167,6 +176,11 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
         } else if (destinoEsp === 'personal') {
           finalCajaId = null;
           if (!finalDescripcion.includes('[PERSONAL]')) finalDescripcion = `[PERSONAL] ${finalDescripcion}`;
+        }
+      } else if (formData.tipo === 'ingreso') {
+        if (origenEsp === 'cta_cte') {
+          finalCajaId = null;
+          if (!finalDescripcion.includes('[GIRO CTA CTE]')) finalDescripcion = `[GIRO CTA CTE] ${finalDescripcion}`;
         }
       }
 
@@ -295,7 +309,15 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
                 {formData.tipo === 'ingreso' ? 'Caja Origen' : 'Destino de Egreso'}
               </Label>
               {formData.tipo === 'ingreso' ? (
-                <CajaSelector value={cajaId} onChange={setCajaId} />
+                <Select value={origenEsp} onValueChange={setOrigenEsp}>
+                  <SelectTrigger className="glass-input h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="caja">Traspaso de Caja</SelectItem>
+                    <SelectItem value="cta_cte">Giro de Cta Cte</SelectItem>
+                  </SelectContent>
+                </Select>
               ) : (
                 <Select value={destinoEsp} onValueChange={setDestinoEsp}>
                   <SelectTrigger className="glass-input h-9">
@@ -310,6 +332,14 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
               )}
               </div>
           </div>
+
+          {/* Selector de Caja condicional si es Ingreso desde Caja */}
+          {formData.tipo === 'ingreso' && origenEsp === 'caja' && (
+            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+              <Label className="text-xs uppercase text-muted-foreground mb-1 block">Seleccione Caja Origen</Label>
+              <CajaSelector value={cajaId} onChange={setCajaId} />
+            </div>
+          )}
 
           {/* Selector de Caja condicional si es Egreso a Caja */}
           {formData.tipo === 'egreso' && destinoEsp === 'caja' && (
