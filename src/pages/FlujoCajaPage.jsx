@@ -51,10 +51,31 @@ const FlujoCajaPage = () => {
     setLoading(true);
     try {
       const { data: pData } = await supabase.from('fjc_parametros').select('*');
-      if (pData) {
-        setParams(pData);
-        setEditingParams(JSON.parse(JSON.stringify(pData))); // Deep clone
+      
+      let finalParams = pData || [];
+      
+      if (!pData || pData.length === 0) {
+          // Si no hay datos, intentamos sembrar valores por defecto para que la UI no esté vacía
+          const defaults = [
+              { field_key: 'venta_efectivo', label: 'Venta Efectivo', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'abonos_mp', label: 'Abonos Mercado Pago', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'abonos_bch', label: 'Abonos Banco Chile', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'pagos_proveedor_banco', label: 'Pagos Proveedor Banco', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'pagos_proveedor_caja', label: 'Pagos Proveedor Caja', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'servicios_gastos', label: 'Servicios y Gastos', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'rrhh', label: 'RRHH', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'initial_reserva', label: 'Saldo Anterior Reserva', estimado_lun_jue: 1500000, estimado_vie_dom: 1500000 },
+              { field_key: 'initial_cajas', label: 'Saldo Anterior Cajas', estimado_lun_jue: 500000, estimado_vie_dom: 500000 },
+              { field_key: 'initial_mp', label: 'Saldo Anterior Mercado Pago', estimado_lun_jue: 2000000, estimado_vie_dom: 2000000 },
+              { field_key: 'initial_bch', label: 'Saldo Anterior Banco Chile', estimado_lun_jue: 50000, estimado_vie_dom: 50000 }
+          ];
+          finalParams = defaults;
+          // Opcional: Intentar guardar estos defaults si falla la consulta pero la tabla existe
+          await supabase.from('fjc_parametros').upsert(defaults);
       }
+      
+      setParams(finalParams);
+      setEditingParams(JSON.parse(JSON.stringify(finalParams)));
 
       const startDate = new Date(currentYear, currentMonth, 1);
       const endDate = new Date(currentYear, currentMonth + 1, 30); // Buffer for projection
