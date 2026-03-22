@@ -107,9 +107,44 @@ const FlujoCajaPage = () => {
     }
   };
 
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear(currentYear + 1);
+    } else {
+      setCurrentMonth(currentMonth + 1);
+    }
+  };
+
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear(currentYear - 1);
+    } else {
+      setCurrentMonth(currentMonth - 1);
+    }
+  };
+
   useEffect(() => {
     fetchBaseData();
   }, [currentMonth, currentYear]);
+
+  const monthName = new Date(currentYear, currentMonth).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+  const today = new Date().toISOString().split('T')[0];
+
+  const handleInitialChange = async (key, val) => {
+    try {
+        const { error } = await supabase
+            .from('fjc_parametros')
+            .update({ estimado_lun_jue: val, estimado_vie_dom: val })
+            .eq('field_key', key);
+        
+        if (error) throw error;
+        fetchBaseData();
+    } catch (err) {
+        console.error("Error updating initial balance:", err);
+    }
+  };
 
   // Procesa los datos por día
   const dailyFlow = useMemo(() => {
@@ -306,10 +341,10 @@ const FlujoCajaPage = () => {
         <Card className="glass-card">
             <CardHeader className="pb-2 border-b border-border/50">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">Diciembre 2025 (Ejemplo)</CardTitle>
+                    <CardTitle className="text-lg capitalize">{monthName}</CardTitle>
                     <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
                     </div>
                 </div>
             </CardHeader>
@@ -318,99 +353,91 @@ const FlujoCajaPage = () => {
                     <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-secondary/20 sticky top-0 z-20">
                             <tr>
-                                <th className="p-3 border-r border-border/50 min-w-[220px] bg-background/95 backdrop-blur-sm sticky left-0 z-30">CATEGORÍA / DÍA</th>
+                                <th className="p-3 border-r border-border/50 min-w-[240px] bg-background/95 backdrop-blur-md sticky left-0 z-30">
+                                  <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                                    <span>CONCEPTO</span>
+                                    <span>DETALLE</span>
+                                  </div>
+                                </th>
                                 {dailyFlow.map(d => (
-                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] ${d.isWeekend ? 'bg-primary/10' : ''}`}>
-                                        <div className="font-bold">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
-                                        <div className="text-[10px] opacity-60 uppercase font-mono">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short' })}</div>
+                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] transition-all duration-300 ${d.fecha === today ? 'bg-primary/20 ring-2 ring-primary ring-inset shadow-[0_0_15px_rgba(245,158,11,0.2)]' : d.isWeekend ? 'bg-primary/10' : ''}`}>
+                                        <div className="font-dm-sans font-bold text-sm">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
+                                        <div className={`text-[10px] uppercase font-mono mt-1 ${d.fecha === today ? 'text-primary font-bold' : 'opacity-60'}`}>
+                                          {new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short' })}
+                                        </div>
                                     </th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {/* SALDOS ANTERIORES */}
-                            <tr className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/30">
-                              <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10">SALDO ANTERIOR RESERVA</td>
-                              {dailyFlow.map(d => <td key={d.fecha} className="p-2 text-right border-r border-border/50 pr-4">{formatCurrency(d.saldos.reserva)}</td>)}
-                            </tr>
-                            <tr className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/30">
-                              <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10">SALDO ANTERIOR CAJAS</td>
-                              {dailyFlow.map(d => <td key={d.fecha} className="p-2 text-right border-r border-border/50 pr-4">{formatCurrency(d.saldos.cajas)}</td>)}
-                            </tr>
-                            <tr className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/30">
-                              <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10">SALDO ANTERIOR MERCADO PAGO</td>
-                              {dailyFlow.map(d => <td key={d.fecha} className="p-2 text-right border-r border-border/50 pr-4">{formatCurrency(d.saldos.mp)}</td>)}
-                            </tr>
-                            <tr className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/50">
-                              <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10">SALDO ANTERIOR BCO CHILE</td>
-                              {dailyFlow.map(d => <td key={d.fecha} className="p-2 text-right border-r border-border/50 pr-4">{formatCurrency(d.saldos.bch)}</td>)}
-                            </tr>
+                            {[
+                                { key: 'initial_reserva', label: 'SALDO ANTERIOR RESERVA', account: 'reserva' },
+                                { key: 'initial_cajas', label: 'SALDO ANTERIOR CAJAS', account: 'cajas' },
+                                { key: 'initial_mp', label: 'SALDO ANTERIOR MERCADO PAGO', account: 'mp' },
+                                { key: 'initial_bch', label: 'SALDO ANTERIOR BCO CHILE', account: 'bch' },
+                            ].map((row) => (
+                                <tr key={row.key} className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/30 hover:bg-primary/10 transition-colors">
+                                    <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10 flex items-center justify-between">
+                                      {row.label}
+                                    </td>
+                                    {dailyFlow.map((d, i) => (
+                                        <td key={d.fecha} className={`p-2 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative before:content-[""] before:absolute before:inset-0 before:ring-1 before:ring-primary/30' : ''}`}>
+                                            {i === 0 ? (
+                                                <input 
+                                                    type="number"
+                                                    className="w-full bg-transparent border-none text-right font-bold text-foreground focus:ring-1 focus:ring-primary rounded px-1 -mr-1"
+                                                    defaultValue={Math.round(d.saldos[row.account])}
+                                                    onBlur={(e) => handleInitialChange(row.key, parseFloat(e.target.value) || 0)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                                                />
+                                            ) : (
+                                                <span className="opacity-70">{formatCurrency(d.saldos[row.account])}</span>
+                                            )}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
 
                             {/* INGRESOS */}
                             <tr className="bg-green-500/5 font-bold"><td colSpan={dailyFlow.length + 1} className="p-2 border-b border-border/50 px-4 text-green-500 flex items-center gap-2"><TrendingUp className="h-3 w-3"/> INGRESOS</td></tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Venta Efectivo</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
-                                        {formatCurrency(d.flow.venta_efectivo)}
-                                    </td>
-                                ))}
-                            </tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Abonos Mercado Pago</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
-                                        {formatCurrency(d.flow.abonos_mp)}
-                                    </td>
-                                ))}
-                            </tr>
-                            <tr className="border-b border-border/50 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Abonos Banco Chile</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
-                                        {formatCurrency(d.flow.abonos_bch)}
-                                    </td>
-                                ))}
-                            </tr>
+                            {[
+                                { key: 'venta_efectivo', label: 'Venta Efectivo' },
+                                { key: 'abonos_mp', label: 'Abonos Mercado Pago' },
+                                { key: 'abonos_bch', label: 'Abonos Banco Chile' }
+                            ].map(row => (
+                                <tr key={row.key} className="border-b border-border/30 transition-colors hover:bg-white/5">
+                                    <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">{row.label}</td>
+                                    {dailyFlow.map(d => (
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
+                                            {formatCurrency(d.flow[row.key])}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
 
                             {/* EGRESOS */}
                             <tr className="bg-red-500/5 font-bold"><td colSpan={dailyFlow.length + 1} className="p-2 border-b border-border/50 px-4 text-red-400 flex items-center gap-2"><TrendingDown className="h-3 w-3"/> EGRESOS</td></tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Pago Proveedores (Banco)</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
-                                        {formatCurrency(d.flow.pago_banco)}
-                                    </td>
-                                ))}
-                            </tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Pago Proveedores (Caja)</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
-                                        {formatCurrency(d.flow.pago_caja)}
-                                    </td>
-                                ))}
-                            </tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">Servicios y Gastos</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
-                                        {formatCurrency(d.flow.gastos)}
-                                    </td>
-                                ))}
-                            </tr>
-                            <tr className="border-b border-border/30 transition-colors hover:bg-white/5">
-                                <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">RRHH</td>
-                                {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
-                                        {formatCurrency(d.flow.rrhh)}
-                                    </td>
-                                ))}
-                            </tr>
+                            {[
+                                { key: 'pago_banco', label: 'Pago Proveedores (Banco)' },
+                                { key: 'pago_caja', label: 'Pago Proveedores (Caja)' },
+                                { key: 'gastos', label: 'Servicios y Gastos' },
+                                { key: 'rrhh', label: 'RRHH' }
+                            ].map(row => (
+                                <tr key={row.key} className="border-b border-border/30 transition-colors hover:bg-white/5">
+                                    <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">{row.label}</td>
+                                    {dailyFlow.map(d => (
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
+                                            {formatCurrency(d.flow[row.key])}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+
                             <tr className="border-b border-border/50 transition-colors hover:bg-white/5">
                                 <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10 text-amber-400 font-semibold">Diferencia de Caja</td>
                                 {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.isProjected ? 'text-muted-foreground italic' : (d.flow.diferencia < 0 ? 'text-red-400' : 'text-green-400')}`}>
+                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : (d.flow.diferencia < 0 ? 'text-red-400' : 'text-green-400')}`}>
                                         {formatCurrency(d.flow.diferencia)}
                                     </td>
                                 ))}
@@ -420,7 +447,7 @@ const FlujoCajaPage = () => {
                              <tr className="bg-primary/20 font-extrabold border-t-2 border-primary">
                                 <td className="p-4 border-r border-border/50 sticky left-0 bg-primary/40 backdrop-blur-sm z-30">LIBRE DISPONIBILIDAD (Final)</td>
                                 {dailyFlow.map(d => (
-                                    <td key={d.fecha} className="p-4 text-right border-r border-border/50 pr-4 text-primary underline">
+                                    <td key={d.fecha} className={`p-4 text-right border-r border-border/50 pr-4 text-primary underline ${d.fecha === today ? 'bg-primary/40' : ''}`}>
                                       {formatCurrency(d.saldos.consolidado + d.totalDia)}
                                     </td>
                                 ))}
