@@ -383,15 +383,6 @@ const FlujoCajaPage = () => {
                 >
                     <table className="w-full text-xs text-left border-collapse relative">
                         <thead className="sticky top-0 z-40">
-                             {/* INDICADOR FLOTANTE DE DÍA (Solo visible al scrollear a la derecha) */}
-                             {scrollX > 100 && (
-                                <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-primary px-3 py-1 rounded-full shadow-lg z-[60] flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                    <Calendar className="h-3 w-3" />
-                                    <span className="font-bold text-[10px] whitespace-nowrap">
-                                        Viendo: {new Date(dailyFlow[Math.floor(scrollX / 120)]?.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long' })}
-                                    </span>
-                                </div>
-                             )}
                             <tr className="bg-background/95 backdrop-blur-md shadow-sm">
                                 <th className="p-3 border-r border-border/50 min-w-[240px] sticky left-0 z-50 bg-background/95 border-b-2 border-primary/30">
                                   <div className="flex items-center justify-between text-[10px] text-primary uppercase font-bold tracking-widest">
@@ -417,22 +408,22 @@ const FlujoCajaPage = () => {
                                 { key: 'initial_mp', label: 'SALDO ANTERIOR MERCADO PAGO', account: 'mp' },
                                 { key: 'initial_bch', label: 'SALDO ANTERIOR BCO CHILE', account: 'bch' },
                             ].map((row) => (
-                                <tr key={row.key} className="bg-primary/5 font-semibold text-[10px] uppercase text-muted-foreground border-b border-border/30 hover:bg-primary/10 transition-colors">
-                                    <td className="p-2 border-r border-border/50 sticky left-0 bg-primary/10 backdrop-blur-sm z-10 flex items-center justify-between">
+                                <tr key={row.key} className="bg-primary/5 font-bold text-xs uppercase text-muted-foreground border-b border-border/30 hover:bg-primary/10 transition-colors">
+                                    <td className="p-3 border-r border-border/50 sticky left-0 bg-primary/20 backdrop-blur-sm z-10 flex items-center justify-between text-foreground">
                                       {row.label}
                                     </td>
                                     {dailyFlow.map((d, i) => (
-                                        <td key={d.fecha} className={`p-2 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative before:content-[""] before:absolute before:inset-0 before:ring-1 before:ring-primary/30' : ''}`}>
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative' : ''}`}>
                                             {i === 0 ? (
                                                 <input 
                                                     type="number"
-                                                    className="w-full bg-transparent border-none text-right font-bold text-foreground focus:ring-1 focus:ring-primary rounded px-1 -mr-1"
+                                                    className="w-full bg-transparent border-none text-right font-extrabold text-primary text-sm focus:ring-0 rounded px-1 -mr-1"
                                                     defaultValue={Math.round(d.saldos[row.account])}
                                                     onBlur={(e) => handleInitialChange(row.key, parseFloat(e.target.value) || 0)}
                                                     onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
                                                 />
                                             ) : (
-                                                <span className="opacity-70">{formatCurrency(d.saldos[row.account])}</span>
+                                                <span className="opacity-90">{formatCurrency(d.saldos[row.account])}</span>
                                             )}
                                         </td>
                                     ))}
@@ -484,10 +475,10 @@ const FlujoCajaPage = () => {
                             </tr>
                         </tbody>
                         <tfoot className="sticky bottom-0 z-20">
-                             <tr className="bg-primary/20 font-extrabold border-t-2 border-primary">
-                                <td className="p-4 border-r border-border/50 sticky left-0 bg-primary/40 backdrop-blur-sm z-30">LIBRE DISPONIBILIDAD (Final)</td>
+                             <tr className="bg-primary/30 font-extrabold border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.2)]">
+                                <td className="p-5 border-r border-border/50 sticky left-0 bg-primary/40 backdrop-blur-md z-30 text-sm tracking-wider">LIBRE DISPONIBILIDAD (Final)</td>
                                 {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-4 text-right border-r border-border/50 pr-4 text-primary underline ${d.fecha === today ? 'bg-primary/40' : ''}`}>
+                                    <td key={d.fecha} className={`p-5 text-right border-r border-border/50 pr-4 text-primary text-base underline decoration-2 underline-offset-4 ${d.fecha === today ? 'bg-primary/50' : ''}`}>
                                       {formatCurrency(d.saldos.consolidado + d.totalDia)}
                                     </td>
                                 ))}
