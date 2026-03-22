@@ -13,6 +13,7 @@ import AdminCajasPage from '@/pages/AdminCajasPage';
 import SupplierManagementPage from '@/pages/SupplierManagementPage';
 import ReservaPage from '@/pages/ReservaPage';
 import InformesPage from '@/pages/InformesPage';
+import FlujoCajaPage from '@/pages/FlujoCajaPage';
 
 // Lazy-loaded para aislar errores de importación sin romper el resto de la app
 const OtrosMovimientosPage = lazy(() => import('@/pages/OtrosMovimientosPage'));
@@ -91,6 +92,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly={true}>
                 <AdminUsersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/flujo-caja"
+            element={
+              <ProtectedRoute>
+                <FlujoCajaPage />
               </ProtectedRoute>
             }
           />

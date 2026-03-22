@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { LogOut, Users, Receipt, Building2, ArrowUpDown, Package, History, BarChart2 } from 'lucide-react';
+import { LogOut, Users, Receipt, Building2, ArrowUpDown, Package, History, BarChart2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContextObject';
 import { useToast } from '@/hooks/use-toast';
@@ -66,6 +66,13 @@ const Header = () => {
                     <Button variant={isActive('/reserva') ? 'default' : 'ghost'} size="sm" className={isActive('/reserva') ? 'bg-primary/20 text-primary hover:bg-primary/30 border-none font-bold ring-1 ring-primary/30' : 'font-bold'}>
                       <History className="mr-2 h-4 w-4" />
                       Reserva
+                    </Button>
+                  </Link>
+
+                   <Link to="/flujo-caja">
+                    <Button variant={isActive('/flujo-caja') ? 'default' : 'ghost'} size="sm" className={isActive('/flujo-caja') ? 'bg-primary/20 text-primary hover:bg-primary/30 border-none' : ''}>
+                      <ArrowRightLeft className="mr-2 h-4 w-4" />
+                      Flujo de Caja
                     </Button>
                   </Link>
 
