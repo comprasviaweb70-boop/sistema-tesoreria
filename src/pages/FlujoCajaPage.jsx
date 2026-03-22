@@ -131,6 +131,20 @@ const FlujoCajaPage = () => {
 
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
   const today = new Date().toISOString().split('T')[0];
+  
+  const scrollContainerRef = React.useRef(null);
+  const topScrollRef = React.useRef(null);
+  const [scrollX, setScrollX] = useState(0);
+
+  const handleScrollSync = (e) => {
+    const { scrollLeft } = e.target;
+    setScrollX(scrollLeft);
+    if (e.target === scrollContainerRef.current && topScrollRef.current) {
+        topScrollRef.current.scrollLeft = scrollLeft;
+    } else if (e.target === topScrollRef.current && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollLeft = scrollLeft;
+    }
+  };
 
   const handleInitialChange = async (key, val) => {
     try {
@@ -338,31 +352,57 @@ const FlujoCajaPage = () => {
             </DialogContent>
         </Dialog>
 
-        <Card className="glass-card">
+        <Card className="glass-card overflow-hidden">
             <CardHeader className="pb-2 border-b border-border/50">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg capitalize">{monthName}</CardTitle>
+                    <CardTitle className="text-lg capitalize flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-primary" />
+                        {monthName}
+                    </CardTitle>
                     <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="p-0">
-                <div className="overflow-x-auto scrollbar-thin">
-                    <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-secondary/20 sticky top-0 z-20">
-                            <tr>
-                                <th className="p-3 border-r border-border/50 min-w-[240px] bg-background/95 backdrop-blur-md sticky left-0 z-30">
-                                  <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+
+            {/* BARRA DE DESPLAZAMIENTO SUPERIOR SINCRONIZADA */}
+            <div 
+                ref={topScrollRef}
+                onScroll={handleScrollSync}
+                className="overflow-x-auto scrollbar-thin h-3 bg-secondary/30 relative z-30 border-b border-border/30"
+            >
+                <div style={{ width: dailyFlow.length * 120 + 240 + 'px', height: '1px' }}></div>
+            </div>
+
+            <CardContent className="p-0 relative">
+                <div 
+                    ref={scrollContainerRef}
+                    onScroll={handleScrollSync}
+                    className="overflow-x-auto scrollbar-thin glass-table-container pb-4"
+                >
+                    <table className="w-full text-xs text-left border-collapse relative">
+                        <thead className="sticky top-0 z-40">
+                             {/* INDICADOR FLOTANTE DE DÍA (Solo visible al scrollear a la derecha) */}
+                             {scrollX > 100 && (
+                                <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-primary px-3 py-1 rounded-full shadow-lg z-[60] flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                    <Calendar className="h-3 w-3" />
+                                    <span className="font-bold text-[10px] whitespace-nowrap">
+                                        Viendo: {new Date(dailyFlow[Math.floor(scrollX / 120)]?.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long' })}
+                                    </span>
+                                </div>
+                             )}
+                            <tr className="bg-background/95 backdrop-blur-md shadow-sm">
+                                <th className="p-3 border-r border-border/50 min-w-[240px] sticky left-0 z-50 bg-background/95 border-b-2 border-primary/30">
+                                  <div className="flex items-center justify-between text-[10px] text-primary uppercase font-bold tracking-widest">
                                     <span>CONCEPTO</span>
                                     <span>DETALLE</span>
                                   </div>
                                 </th>
                                 {dailyFlow.map(d => (
-                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] transition-all duration-300 ${d.fecha === today ? 'bg-primary/20 ring-2 ring-primary ring-inset shadow-[0_0_15px_rgba(245,158,11,0.2)]' : d.isWeekend ? 'bg-primary/10' : ''}`}>
-                                        <div className="font-dm-sans font-bold text-sm">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
-                                        <div className={`text-[10px] uppercase font-mono mt-1 ${d.fecha === today ? 'text-primary font-bold' : 'opacity-60'}`}>
+                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] border-b-2 border-primary/30 transition-all duration-300 ${d.fecha === today ? 'bg-primary/30' : d.isWeekend ? 'bg-primary/10' : ''}`}>
+                                        <div className="font-dm-sans font-bold text-sm text-foreground">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
+                                        <div className={`text-[10px] uppercase font-mono mt-1 ${d.fecha === today ? 'text-primary font-bold sc-highlight' : 'opacity-60'}`}>
                                           {new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short' })}
                                         </div>
                                     </th>
