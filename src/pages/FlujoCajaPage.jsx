@@ -366,11 +366,11 @@ const FlujoCajaPage = () => {
                 </div>
             </CardHeader>
 
-            {/* BARRA DE DESPLAZAMIENTO SUPERIOR SINCRONIZADA */}
+            {/* BARRA DE DESPLAZAMIENTO SUPERIOR DISCRETA */}
             <div 
                 ref={topScrollRef}
                 onScroll={handleScrollSync}
-                className="overflow-x-auto scrollbar-thin h-3 bg-secondary/30 relative z-30 border-b border-border/30"
+                className="overflow-x-auto scrollbar-thin h-2 bg-background/80 relative z-30 border-b border-border/20 hover:h-3 transition-all duration-300"
             >
                 <div style={{ width: dailyFlow.length * 120 + 240 + 'px', height: '1px' }}></div>
             </div>
@@ -379,7 +379,7 @@ const FlujoCajaPage = () => {
                 <div 
                     ref={scrollContainerRef}
                     onScroll={handleScrollSync}
-                    className="overflow-x-auto scrollbar-thin glass-table-container pb-4"
+                    className="overflow-x-auto scrollbar-none glass-table-container pb-4"
                 >
                     <table className="w-full text-xs text-left border-collapse relative">
                         <thead className="sticky top-0 z-40">
