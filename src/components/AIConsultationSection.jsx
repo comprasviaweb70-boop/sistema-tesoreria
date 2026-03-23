@@ -38,31 +38,101 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
 
   const formatCurrency = (val) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val || 0);
 
+  // Helper to parse date ranges from query
+  const parseDateRange = (q) => {
+    const now = new Date();
+    let start = null;
+    let end = new Date();
+
+    if (q.includes('hoy')) {
+      start = new Date(now.setHours(0,0,0,0));
+    } else if (q.includes('ayer')) {
+      start = new Date(now.setDate(now.getDate() - 1));
+      start.setHours(0,0,0,0);
+      end = new Date(start);
+      end.setHours(23,59,59,999);
+    } else if (q.includes('esta semana')) {
+      const day = now.getDay() || 7;
+      start = new Date(now.setHours(0,0,0,0));
+      start.setDate(now.getDate() - day + 1);
+    } else if (q.includes('mes pasado')) {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (q.includes('este mes')) {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      // Regex for "X dias"
+      const daysMatch = q.match(/(\d+)\s+d\u00EDas/);
+      if (daysMatch) {
+        const days = parseInt(daysMatch[1]);
+        start = new Date(now.setDate(now.getDate() - days));
+      }
+    }
+    return { start, end };
+  };
+
   const getSmartResponse = (userQuery) => {
     const q = userQuery.toLowerCase();
+    const { start, end } = parseDateRange(q);
     
-    // 1. Logic for Specific Beneficiary/Supplier
-    const mentionedResults = results.filter(r => 
-      r.beneficiario?.toLowerCase().includes(q) || 
-      r.categoria?.toLowerCase().includes(q)
-    );
+    // Filter results by date if range identified
+    let filteredResults = results;
+    let periodText = "";
+    if (start) {
+      filteredResults = results.filter(r => {
+        const d = new Date(r.fecha + 'T12:00:00');
+        return d >= start && d <= end;
+      });
+      periodText = ` en el periodo del ${start.toLocaleDateString('es-CL')} al ${end.toLocaleDateString('es-CL')}`;
+    }
 
-    if (mentionedResults.length > 0 && q.length > 3 && !q.includes('resumen')) {
-      const total = mentionedResults.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
-      const count = mentionedResults.length;
-      const first = mentionedResults[0];
-      
-      return `He encontrado **${count}** coincidencia(s) para tu consulta "${userQuery}":\n\n` +
-             `• **Total acumulado:** ${formatCurrency(total)}\n` +
-             `• **Último registro:** ${new Date(first.fecha + 'T12:00:00').toLocaleDateString('es-CL')} - ${formatCurrency(first.monto)}\n` +
-             `• **Categoría predominante:** ${first.categoria}\n\n` +
-             `¿Deseas que desglose estos movimientos por fecha?`;
+    // Identify Subject (Supplier or Category)
+    // We search for the longest match in results to be accurate
+    let bestMatch = null;
+    let maxMatchLen = 0;
+    
+    // Check beneficiaries
+    results.forEach(r => {
+      const name = r.beneficiario?.toLowerCase();
+      if (name && name.length > 3 && q.includes(name) && name.length > maxMatchLen) {
+        bestMatch = { type: 'beneficiary', name: r.beneficiario };
+        maxMatchLen = name.length;
+      }
+    });
+
+    // Check categories if no beneficiary found or specific word used
+    if (!bestMatch || q.includes('categor\u00EDa')) {
+      results.forEach(r => {
+        const cat = r.categoria?.toLowerCase();
+        if (cat && cat.length > 3 && q.includes(cat) && cat.length > maxMatchLen) {
+          bestMatch = { type: 'category', name: r.categoria };
+          maxMatchLen = cat.length;
+        }
+      });
+    }
+
+    if (bestMatch) {
+      const targetResults = filteredResults.filter(r => 
+        (bestMatch.type === 'beneficiary' && r.beneficiario === bestMatch.name) ||
+        (bestMatch.type === 'category' && r.categoria === bestMatch.name)
+      );
+
+      if (targetResults.length > 0) {
+        const total = targetResults.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
+        return `He analizado los registros de **${bestMatch.name}**${periodText}.\n\n` +
+               `\u2022 **Monto Total:** ${formatCurrency(total)}\n` +
+               `\u2022 **Cantidad de movimientos:** ${targetResults.length}\n` +
+               `\u2022 **Promedio:** ${formatCurrency(total / targetResults.length)}\n\n` +
+               `¿Te gustaría ver el detalle de estos movimientos?`;
+      } else if (start) {
+        return `No encontr\u00E9 movimientos para **${bestMatch.name}** en ese periodo espec\u00EDfico, aunque s\u00ED existen registros en otras fechas.`;
+      }
     }
 
     // 2. Logic for Top Analysis
     if (q.includes('top') || q.includes('mayores') || q.includes('ranking')) {
       const groups = {};
-      results.forEach(r => {
+      filteredResults.forEach(r => {
         const name = r.beneficiario || 'Desconocido';
         groups[name] = (groups[name] || 0) + (parseFloat(r.monto) || 0);
       });
@@ -70,7 +140,7 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
       
-      let msg = `Aqu\u00ED tienes el ranking de los 5 principales beneficiarios/proveedores en el periodo:\n\n`;
+      let msg = `Aqu\u00ED tienes el ranking de los 5 mayores gastos${periodText}:\n\n`;
       top5.forEach(([name, total], i) => {
         msg += `${i + 1}. **${name}**: ${formatCurrency(total)}\n`;
       });
@@ -79,44 +149,53 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
 
     // 3. Logic for Reserva
     if (q.includes('reserva') || q.includes('tesoreria') || q.includes('tesorería')) {
-      const ingresosResc = reservaMovimientos.filter(m => m.tipo === 'ingreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
-      const egresosResc = reservaMovimientos.filter(m => m.tipo === 'egreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
-      return `En el m\u00F3dulo de **Reserva/Tesorer\u00EDa** he detectado:\n\n` +
-             `• **Ingresos totales:** ${formatCurrency(ingresosResc)}\n` +
-             `• **Egresos/Retiros:** ${formatCurrency(egresosResc)}\n\n` +
-             `Esto incluye traspasos entre cajas y giros directos.`;
-    }
+      const filteredReserva = start ? reservaMovimientos.filter(m => {
+        const d = new Date(m.fecha + 'T12:00:00');
+        return d >= start && d <= end;
+      }) : reservaMovimientos;
 
-    // 4. Logic for RRHH
-    if (q.includes('rrhh') || q.includes('sueldo') || q.includes('personal')) {
-      return `He analizado los gastos de RRHH en el periodo seleccionado. El total asciende a **${formatCurrency(stats.rrhhTotal)}**. Esto representa aproximadamente un **${((stats.rrhhTotal / stats.totalEgresos) * 100).toFixed(1)}%** del total de egresos filtrados (${formatCurrency(stats.totalEgresos)}).`;
-    }
-
-    // 5. Logic for "Resumen" / "Egresos" / "Ingresos"
-    if (q.includes('resumen') || q.includes('general') || q.includes('balance')) {
-      const balance = stats.totalIngresos - stats.totalEgresos;
-      return `Aqu\u00ED tienes el resumen ejecutivo del periodo:\n\n` +
-             `\u2022 **Ingresos Totales:** ${formatCurrency(stats.totalIngresos)}\n` +
-             `\u2022 **Egresos Totales:** ${formatCurrency(stats.totalEgresos)}\n` +
-             `\u2022 **Balance Neto:** ${formatCurrency(balance)}\n\n` +
-             `Se han procesado un total de **${stats.count}** movimientos.`;
-    }
-
-    // 6. Logic for "Ventas" / "Caja"
-    if (q.includes('venta') || q.includes('tarjeta') || q.includes('efectivo')) {
-      const totalVentas = dailyBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.total_ventas, 0);
-      const totalEfectivo = dailyBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.venta_efectivo, 0);
-      const totalTarjetas = dailyBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.redelcom, 0);
+      const ingresosResc = filteredReserva.filter(m => m.tipo === 'ingreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
+      const egresosResc = filteredReserva.filter(m => m.tipo === 'egreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
       
-      return `Analizando el Resumen Diario Consolidado:\n\n` +
-             `• **Ventas Totales:** ${formatCurrency(totalVentas)}\n` +
-             `• **Efectivo Neto:** ${formatCurrency(totalEfectivo)} (${((totalEfectivo/totalVentas)*100).toFixed(0)}%)\n` +
-             `• **Tarjetas (Redelcom/Crédito):** ${formatCurrency(totalTarjetas)} (${((totalTarjetas/totalVentas)*100).toFixed(0)}%)\n\n` +
-             `La tendencia de ventas muestra un comportamiento estable en las cajas consultadas.`;
+      return `En el m\u00F3dulo de **Reserva/Tesorer\u00EDa**${periodText} he detectado:\n\n` +
+             `\u2022 **Ingresos totales:** ${formatCurrency(ingresosResc)}\n` +
+             `\u2022 **Egresos/Retiros:** ${formatCurrency(egresosResc)}`;
+    }
+
+    // 4. RRHH Logic (using stats if no period, or results if period)
+    if (q.includes('rrhh') || q.includes('sueldo') || q.includes('personal')) {
+      const rrhhResults = filteredResults.filter(r => r.categoria?.toLowerCase().includes('rrhh'));
+      const total = rrhhResults.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
+      return `Los gastos de **RRHH**${periodText} suman un total de **${formatCurrency(start ? total : stats.rrhhTotal)}**.`;
+    }
+
+    // 5. Logic for "Resumen"
+    if (q.includes('resumen') || q.includes('general') || q.includes('balance')) {
+      const ing = filteredResults.filter(r => r.tipo === 'ingreso').reduce((acc, r) => acc + (parseFloat(r.monto) || 0), 0);
+      const egr = filteredResults.filter(r => r.tipo === 'egreso').reduce((acc, r) => acc + (parseFloat(r.monto) || 0), 0);
+      
+      return `Resumen ejecutivo${periodText}:\n\n` +
+             `\u2022 **Ingresos:** ${formatCurrency(start ? ing : stats.totalIngresos)}\n` +
+             `\u2022 **Egresos:** ${formatCurrency(start ? egr : stats.totalEgresos)}\n` +
+             `\u2022 **Balance:** ${formatCurrency((start ? ing : stats.totalIngresos) - (start ? egr : stats.totalEgresos))}`;
+    }
+
+    // 6. Logic for "Ventas"
+    if (q.includes('venta') || q.includes('tarjeta') || q.includes('efectivo')) {
+      let fBalances = dailyBalances;
+      if (start) {
+        fBalances = dailyBalances.filter(d => {
+          const dt = new Date(d.fecha + 'T12:00:00');
+          return dt >= start && dt <= end;
+        });
+      }
+      
+      const totalVentas = fBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.total_ventas, 0);
+      return `Ventas consolidadas${periodText}: **${formatCurrency(totalVentas)}**.`;
     }
 
     // Default
-    return "Interesante pregunta. Bas\u00E1ndome en los datos actuales, puedo decirte que tienes acceso a " + results.length + " movimientos detallados y " + dailyBalances.length + " registros de caja. \u00BFDeseas saber el total pagado a alg\u00FAn proveedor espec\u00EDfico o el ranking de gastos?";
+    return "Interesante pregunta. Puedes consultarme por **proveedores espec\u00EDficos**, **gastos de RRHH** o pedirme un **Top 5**, aclarando si lo deseas de 'esta semana', 'este mes' o 'los \u00FAltimos X d\u00EDas'.";
   };
 
   const handleSend = () => {
