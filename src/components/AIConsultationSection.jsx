@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const AIConsultationSection = ({ stats, dailyBalances }) => {
+const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovimientos = [] }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([
     { 
@@ -41,12 +41,58 @@ const AIConsultationSection = ({ stats, dailyBalances }) => {
   const getSmartResponse = (userQuery) => {
     const q = userQuery.toLowerCase();
     
-    // Logic for "RRHH"
+    // 1. Logic for Specific Beneficiary/Supplier
+    const mentionedResults = results.filter(r => 
+      r.beneficiario?.toLowerCase().includes(q) || 
+      r.categoria?.toLowerCase().includes(q)
+    );
+
+    if (mentionedResults.length > 0 && q.length > 3 && !q.includes('resumen')) {
+      const total = mentionedResults.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
+      const count = mentionedResults.length;
+      const first = mentionedResults[0];
+      
+      return `He encontrado **${count}** coincidencia(s) para tu consulta "${userQuery}":\n\n` +
+             `• **Total acumulado:** ${formatCurrency(total)}\n` +
+             `• **Último registro:** ${new Date(first.fecha + 'T12:00:00').toLocaleDateString('es-CL')} - ${formatCurrency(first.monto)}\n` +
+             `• **Categoría predominante:** ${first.categoria}\n\n` +
+             `¿Deseas que desglose estos movimientos por fecha?`;
+    }
+
+    // 2. Logic for Top Analysis
+    if (q.includes('top') || q.includes('mayores') || q.includes('ranking')) {
+      const groups = {};
+      results.forEach(r => {
+        const name = r.beneficiario || 'Desconocido';
+        groups[name] = (groups[name] || 0) + (parseFloat(r.monto) || 0);
+      });
+      const top5 = Object.entries(groups)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+      
+      let msg = `Aqu\u00ED tienes el ranking de los 5 principales beneficiarios/proveedores en el periodo:\n\n`;
+      top5.forEach(([name, total], i) => {
+        msg += `${i + 1}. **${name}**: ${formatCurrency(total)}\n`;
+      });
+      return msg;
+    }
+
+    // 3. Logic for Reserva
+    if (q.includes('reserva') || q.includes('tesoreria') || q.includes('tesorería')) {
+      const ingresosResc = reservaMovimientos.filter(m => m.tipo === 'ingreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
+      const egresosResc = reservaMovimientos.filter(m => m.tipo === 'egreso').reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
+      return `En el m\u00F3dulo de **Reserva/Tesorer\u00EDa** he detectado:\n\n` +
+             `• **Ingresos totales:** ${formatCurrency(ingresosResc)}\n` +
+             `• **Egresos/Retiros:** ${formatCurrency(egresosResc)}\n\n` +
+             `Esto incluye traspasos entre cajas y giros directos.`;
+    }
+
+    // 4. Logic for RRHH
     if (q.includes('rrhh') || q.includes('sueldo') || q.includes('personal')) {
       return `He analizado los gastos de RRHH en el periodo seleccionado. El total asciende a **${formatCurrency(stats.rrhhTotal)}**. Esto representa aproximadamente un **${((stats.rrhhTotal / stats.totalEgresos) * 100).toFixed(1)}%** del total de egresos filtrados (${formatCurrency(stats.totalEgresos)}).`;
     }
 
-    // Logic for "Resumen" / "Egresos" / "Ingresos"
+    // 5. Logic for "Resumen" / "Egresos" / "Ingresos"
     if (q.includes('resumen') || q.includes('general') || q.includes('balance')) {
       const balance = stats.totalIngresos - stats.totalEgresos;
       return `Aqu\u00ED tienes el resumen ejecutivo del periodo:\n\n` +
@@ -56,7 +102,7 @@ const AIConsultationSection = ({ stats, dailyBalances }) => {
              `Se han procesado un total de **${stats.count}** movimientos.`;
     }
 
-    // Logic for "Ventas" / "Caja"
+    // 6. Logic for "Ventas" / "Caja"
     if (q.includes('venta') || q.includes('tarjeta') || q.includes('efectivo')) {
       const totalVentas = dailyBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.total_ventas, 0);
       const totalEfectivo = dailyBalances.filter(d => d.isTotalLine).reduce((acc, curr) => acc + curr.venta_efectivo, 0);
@@ -70,7 +116,7 @@ const AIConsultationSection = ({ stats, dailyBalances }) => {
     }
 
     // Default
-    return "Interesante pregunta. Bas\u00E1ndome en los datos actuales, puedo decirte que tienes un flujo de caja activo con un total de " + stats.count + " registros. \u00BFTe gustar\u00EDa que profundice en alg\u00FAn \u00E1rea espec\u00EDfica como RRHH o el desglose de ventas por tarjeta?";
+    return "Interesante pregunta. Bas\u00E1ndome en los datos actuales, puedo decirte que tienes acceso a " + results.length + " movimientos detallados y " + dailyBalances.length + " registros de caja. \u00BFDeseas saber el total pagado a alg\u00FAn proveedor espec\u00EDfico o el ranking de gastos?";
   };
 
   const handleSend = () => {

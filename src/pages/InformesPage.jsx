@@ -456,7 +456,12 @@ const InformesPage = () => {
 
         {/* Consulta IA Section */}
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150">
-          <AIConsultationSection stats={stats} dailyBalances={dailyBalances} />
+          <AIConsultationSection 
+            stats={stats} 
+            dailyBalances={dailyBalances} 
+            results={results}
+            reservaMovimientos={reservaMovimientos}
+          />
         </div>
 
         {/* Resumen Diario Consolidado */}
