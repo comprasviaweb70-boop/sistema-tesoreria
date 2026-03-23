@@ -18,6 +18,8 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
   const [loading, setLoading] = useState(false);
   const [categorias, setCategorias] = useState([]);
 
+  const [originalData, setOriginalData] = useState(null);
+
   const isEdit = !!editData?.id;
 
   const [formData, setFormData] = useState({
@@ -32,7 +34,8 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
 
   useEffect(() => {
     if (editData) {
-      setFormData({
+      const medio = inferMedio(editData);
+      const data = {
         id: editData.id,
         tipo: editData.tipo,
         categoria_id: editData.categoria_id || '',
@@ -40,8 +43,10 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         monto: editData.monto.toString(),
         fecha: editData.fecha,
         turno: editData.turno,
-        medio_a_corregir: editData.medio_a_corregir || 'redelcom',
-      });
+        medio_a_corregir: medio,
+      };
+      setFormData(data);
+      setOriginalData(data); // Store for reversal
       if (editData.caja_id) setGlobalCajaId(editData.caja_id);
     }
   }, [editData]);
@@ -60,6 +65,21 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
     setCategorias(data || []);
   };
 
+  const inferMedio = (record) => {
+    if (record.medio_a_corregir) return record.medio_a_corregir;
+    if (record.descripcion?.includes('[Medio:')) {
+      const match = record.descripcion.match(/\[Medio: (.*?)\]/);
+      if (match) return match[1];
+    }
+    const catName = record.categorias_movimiento?.nombre?.toLowerCase() || '';
+    if (catName.includes('debito') || catName.includes('débito') || catName.includes('redelcom')) return 'redelcom';
+    if (catName.includes('transferencia')) return 'transferencia';
+    if (catName.includes('tarjeta_credito') || catName.includes('crédito')) return 'tarjeta_credito';
+    if (catName.includes('edenred')) return 'edenred';
+    if (catName.includes('credito') || catName.includes('fiado')) return 'credito';
+    return 'redelcom';
+  };
+
   const handleChange = (field, value) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
@@ -71,19 +91,17 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
   /**
    * Sincroniza el movimiento con venta_diaria:
    */
-  const syncToVentaDiaria = async (monto) => {
-    const selectedCat = categorias.find(c => c.id === formData.categoria_id);
+  const syncToVentaDiaria = async (monto, currentFormData, isReversal = false) => {
+    const selectedCat = categorias.find(c => c.id === currentFormData.categoria_id);
     const catName = selectedCat?.nombre?.toLowerCase() || '';
-    const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
+    const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección') || catName.includes('ajuste boletas');
     
-    // Las correcciones de boletas requieren una lógica especial de ajuste de campos 
-    // que no es una simple suma de movimientos.
     if (isCorreccion) {
       const { data: currentVenta, error: fetchError } = await supabase
         .from('venta_diaria')
-        .select(`id, venta_efectivo, ${formData.medio_a_corregir}`)
-        .eq('fecha', formData.fecha)
-        .eq('turno', formData.turno)
+        .select(`id, venta_efectivo, ${currentFormData.medio_a_corregir}`)
+        .eq('fecha', currentFormData.fecha)
+        .eq('turno', currentFormData.turno)
         .eq('caja_id', globalCajaId)
         .maybeSingle();
 
@@ -91,14 +109,17 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
 
       if (currentVenta) {
         const updatePayload = {};
-        if (formData.tipo === 'ingreso') {
-          // Débito -> Efectivo (Aumenta efectivo, reduce el otro medio)
-          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + monto;
-          updatePayload[formData.medio_a_corregir] = (parseFloat(currentVenta[formData.medio_a_corregir]) || 0) - monto;
+        const sign = isReversal ? -1 : 1;
+        const adjustedMonto = monto * sign;
+
+        if (currentFormData.tipo === 'ingreso') {
+          // Débito -> Efectivo (Original: Aumenta efectivo, reduce el otro medio)
+          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + adjustedMonto;
+          updatePayload[currentFormData.medio_a_corregir] = (parseFloat(currentVenta[currentFormData.medio_a_corregir]) || 0) - adjustedMonto;
         } else {
-          // Efectivo -> Débito (Reduce efectivo, aumenta el otro medio)
-          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) - monto;
-          updatePayload[formData.medio_a_corregir] = (parseFloat(currentVenta[formData.medio_a_corregir]) || 0) + monto;
+          // Efectivo -> Débito (Original: Reduce efectivo, aumenta el otro medio)
+          updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) - adjustedMonto;
+          updatePayload[currentFormData.medio_a_corregir] = (parseFloat(currentVenta[currentFormData.medio_a_corregir]) || 0) + adjustedMonto;
         }
         
         const { error: updateError } = await supabase
@@ -112,7 +133,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
     }
 
     // Para todos los demás movimientos, usamos la utilidad de recalculo robusto
-    await recalculateVentaDiaria(supabase, formData.fecha, formData.turno, globalCajaId);
+    await recalculateVentaDiaria(supabase, currentFormData.fecha, currentFormData.turno, globalCajaId);
   };
 
   const handleSubmit = async (e) => {
@@ -130,23 +151,40 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
     setLoading(true);
     try {
       if (isEdit) {
-        // Prepare update
+        // 1. REVERSE old adjustment if it was a correction
+        if (originalData) {
+          await syncToVentaDiaria(parseFloat(originalData.monto), originalData, true);
+        }
+
+        // 2. Prepare update
+        const selectedCat = categorias.find(c => c.id === formData.categoria_id);
+        const isCorreccion = selectedCat?.nombre?.toLowerCase()?.includes('corrección') || selectedCat?.nombre?.toLowerCase()?.includes('correccion') || selectedCat?.nombre?.toLowerCase()?.includes('ajuste boletas');
+        
+        let finalDescripcion = formData.descripcion;
+        if (isCorreccion) {
+          // Add tag to description to persist medio_a_corregir
+          if (!finalDescripcion?.includes(`[Medio: ${formData.medio_a_corregir}]`)) {
+            finalDescripcion = `[Medio: ${formData.medio_a_corregir}] ${finalDescripcion || ''}`.trim();
+          }
+        }
+
         const updateObj = {
           fecha: formData.fecha,
           turno: formData.turno,
           caja_id: globalCajaId,
           tipo: formData.tipo,
           categoria_id: formData.categoria_id || null,
-          descripcion: formData.descripcion || null,
+          descripcion: finalDescripcion || null,
           monto,
         };
 
         const { error } = await supabase.from('otros_movimientos').update(updateObj).eq('id', formData.id);
         if (error) throw error;
 
-        // Sync with Venta Diaria
-        await syncToVentaDiaria(monto);
-        // If the date/box/shift changed, we should also sync the OLD one
+        // 3. APPLY new adjustment
+        await syncToVentaDiaria(monto, { ...formData, descripcion: finalDescripcion });
+        
+        // 4. If the metadata changed, we should also sync the OLD one (already reversed above)
         if (editData.fecha !== formData.fecha || editData.turno !== formData.turno || editData.caja_id !== globalCajaId) {
           await recalculateVentaDiaria(supabase, editData.fecha, editData.turno, editData.caja_id);
         }
@@ -154,18 +192,26 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         toast({ title: 'Movimiento actualizado', description: 'Los cambios se han guardado y sincronizado.' });
       } else {
         // Insert logic
+        const selectedCat = categorias.find(c => c.id === formData.categoria_id);
+        const isCorreccion = selectedCat?.nombre?.toLowerCase()?.includes('corrección') || selectedCat?.nombre?.toLowerCase()?.includes('correccion') || selectedCat?.nombre?.toLowerCase()?.includes('ajuste boletas');
+        
+        let finalDescripcion = formData.descripcion;
+        if (isCorreccion) {
+          finalDescripcion = `[Medio: ${formData.medio_a_corregir}] ${finalDescripcion || ''}`.trim();
+        }
+
         const { error } = await supabase.from('otros_movimientos').insert([{
           fecha: formData.fecha,
           turno: formData.turno,
           caja_id: globalCajaId,
           tipo: formData.tipo,
           categoria_id: formData.categoria_id || null,
-          descripcion: formData.descripcion || null,
+          descripcion: finalDescripcion || null,
           monto,
         }]);
         if (error) throw error;
 
-        await syncToVentaDiaria(monto);
+        await syncToVentaDiaria(monto, { ...formData, descripcion: finalDescripcion });
         toast({ title: 'Movimiento registrado', description: 'El nuevo registro ha sido sincronizado.' });
       }
 

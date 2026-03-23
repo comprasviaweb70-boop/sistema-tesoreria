@@ -66,11 +66,50 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
       const movimiento = movimientos.find(m => m.id === confirmDeleteId);
       if (!movimiento) throw new Error("No se encontró el movimiento en la lista actual");
 
+      const catName = movimiento.categorias_movimiento?.nombre?.toLowerCase() || '';
+      const isCorreccion = catName.includes('corrección') || catName.includes('correccion') || catName.includes('ajuste boletas');
+
+      if (isCorreccion) {
+        // Reverse adjustment in Venta Diaria
+        const medio = inferMedio(movimiento);
+        const { data: currentVenta, error: fetchError } = await supabase
+          .from('venta_diaria')
+          .select(`id, venta_efectivo, ${medio}`)
+          .eq('fecha', movimiento.fecha)
+          .eq('turno', movimiento.turno)
+          .eq('caja_id', movimiento.caja_id)
+          .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        if (currentVenta) {
+          const updatePayload = {};
+          const monto = parseFloat(movimiento.monto) || 0;
+
+          if (movimiento.tipo === 'ingreso') {
+            // Original: +Efectivo, -Medio. Reverse: -Efectivo, +Medio.
+            updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) - monto;
+            updatePayload[medio] = (parseFloat(currentVenta[medio]) || 0) + monto;
+          } else {
+            // Original: -Efectivo, +Medio. Reverse: +Efectivo, -Medio.
+            updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + monto;
+            updatePayload[medio] = (parseFloat(currentVenta[medio]) || 0) - monto;
+          }
+
+          const { error: vdUpdateError } = await supabase
+            .from('venta_diaria')
+            .update(updatePayload)
+            .eq('id', currentVenta.id);
+          
+          if (vdUpdateError) throw vdUpdateError;
+        }
+      }
+
       // 1. Eliminar el registro en sí
       const { error: deleteError } = await supabase.from('otros_movimientos').delete().eq('id', confirmDeleteId);
       if (deleteError) throw deleteError;
 
-      // 2. Sincronizar con Venta Diaria usando la utilidad robusta
+      // 2. Sincronizar con Venta Diaria usando la utilidad robusta (para los totales de otros egresos)
       await recalculateVentaDiaria(supabase, movimiento.fecha, movimiento.turno, movimiento.caja_id);
       
       toast({ title: 'Movimiento eliminado', description: 'El movimiento fue eliminado y la Venta Diaria sincronizada correctamente.' });
@@ -83,6 +122,20 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
       setIsDeleting(false);
       setConfirmDeleteId(null);
     }
+  };
+
+  const inferMedio = (record) => {
+    if (record.descripcion?.includes('[Medio:')) {
+      const match = record.descripcion.match(/\[Medio: (.*?)\]/);
+      if (match) return match[1];
+    }
+    const catName = record.categorias_movimiento?.nombre?.toLowerCase() || '';
+    if (catName.includes('debito') || catName.includes('débito') || catName.includes('redelcom')) return 'redelcom';
+    if (catName.includes('transferencia')) return 'transferencia';
+    if (catName.includes('tarjeta_credito') || catName.includes('crédito')) return 'tarjeta_credito';
+    if (catName.includes('edenred')) return 'edenred';
+    if (catName.includes('credito')) return 'credito';
+    return 'redelcom';
   };
 
   const handleEdit = (m) => {
