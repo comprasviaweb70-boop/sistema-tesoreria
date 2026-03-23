@@ -52,10 +52,40 @@ const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit,
 
   return (
     <Card className="h-fit sticky top-20 glass-card">
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground border-b border-border pb-2">Resumen de Caja del Día</CardTitle>
+        <div className="pt-4">
+          {ventaData?.estado !== 'Cerrado' && (
+            <Button
+              onClick={onCerrarDia}
+              className="w-full accent-button mb-3"
+            >
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Cerrar Día
+            </Button>
+          )}
+
+          {ventaData?.estado === 'Cerrado' && (
+            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 flex flex-col gap-3 mb-3 glass-card">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 accent-text" />
+                <span className="text-sm accent-text font-medium">Día Cerrado</span>
+              </div>
+              {ventaData?.estado === 'Cerrado' && onReabrirDia && (
+                <Button
+                  onClick={onReabrirDia}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-primary/50 text-primary hover:bg-primary/10"
+                >
+                  Abrir Día
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-0">
         <div className="space-y-3">
           
           <div className="flex justify-between items-center pb-2 border-b border-border/30 pt-2">
@@ -168,34 +198,6 @@ const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit,
           </div>
         </div>
 
-        {ventaData?.estado !== 'Cerrado' && (
-          <Button
-            onClick={onCerrarDia}
-            className="w-full accent-button mt-4"
-          >
-            <CheckCircle className="mr-2 h-4 w-4" />
-            Cerrar Día
-          </Button>
-        )}
-
-        {ventaData?.estado === 'Cerrado' && (
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 flex flex-col gap-3 mt-4 glass-card">
-            <div className="flex items-center gap-2">
-              <Lock className="h-4 w-4 accent-text" />
-              <span className="text-sm accent-text font-medium">Día Cerrado</span>
-            </div>
-            {ventaData?.estado === 'Cerrado' && onReabrirDia && (
-              <Button
-                onClick={onReabrirDia}
-                variant="outline"
-                size="sm"
-                className="w-full border-primary/50 text-primary hover:bg-primary/10"
-              >
-                Abrir Día
-              </Button>
-            )}
-          </div>
-        )}
 
 
       </CardContent>
