@@ -28,6 +28,7 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [lastAnalysis, setLastAnalysis] = useState(null); // { subject, period, results }
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -43,29 +44,43 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
     const now = new Date();
     let start = null;
     let end = new Date();
+    end.setHours(23, 59, 59, 999);
 
     if (q.includes('hoy')) {
       start = new Date(now.setHours(0,0,0,0));
     } else if (q.includes('ayer')) {
-      start = new Date(now.setDate(now.getDate() - 1));
+      start = new Date();
+      start.setDate(now.getDate() - 1);
       start.setHours(0,0,0,0);
       end = new Date(start);
       end.setHours(23,59,59,999);
     } else if (q.includes('esta semana')) {
       const day = now.getDay() || 7;
-      start = new Date(now.setHours(0,0,0,0));
+      start = new Date();
       start.setDate(now.getDate() - day + 1);
+      start.setHours(0,0,0,0);
+    } else if (q.includes('semana pasada')) {
+      const day = now.getDay() || 7;
+      start = new Date();
+      start.setDate(now.getDate() - day - 6);
+      start.setHours(0,0,0,0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23,59,59,999);
     } else if (q.includes('mes pasado')) {
       start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       end = new Date(now.getFullYear(), now.getMonth(), 0);
+      end.setHours(23,59,59,999);
     } else if (q.includes('este mes')) {
       start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start.setHours(0,0,0,0);
     } else {
-      // Regex for "X dias"
       const daysMatch = q.match(/(\d+)\s+d\u00EDas/);
       if (daysMatch) {
         const days = parseInt(daysMatch[1]);
-        start = new Date(now.setDate(now.getDate() - days));
+        start = new Date();
+        start.setDate(now.getDate() - days);
+        start.setHours(0,0,0,0);
       }
     }
     return { start, end };
@@ -119,14 +134,27 @@ const AIConsultationSection = ({ stats, dailyBalances, results = [], reservaMovi
 
       if (targetResults.length > 0) {
         const total = targetResults.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
+        setLastAnalysis({ subject: bestMatch, period: { start, end, text: periodText }, results: targetResults });
         return `He analizado los registros de **${bestMatch.name}**${periodText}.\n\n` +
                `\u2022 **Monto Total:** ${formatCurrency(total)}\n` +
                `\u2022 **Cantidad de movimientos:** ${targetResults.length}\n` +
                `\u2022 **Promedio:** ${formatCurrency(total / targetResults.length)}\n\n` +
-               `¿Te gustaría ver el detalle de estos movimientos?`;
+               `\u00BFTe gustar\u00EDa ver el detalle de estos movimientos?`;
       } else if (start) {
+        setLastAnalysis(null);
         return `No encontr\u00E9 movimientos para **${bestMatch.name}** en ese periodo espec\u00EDfico, aunque s\u00ED existen registros en otras fechas.`;
       }
+    }
+
+    // NEW: Logic for Follow-up (Details)
+    if ((q.includes('detalle') || q.includes('s\u00ED') || q.includes('ver m\u00E1s') || q.includes('cu\u00E1les')) && lastAnalysis) {
+      const { subject, results: lResults } = lastAnalysis;
+      let msg = `Aqu\u00ED tienes el detalle de **${subject.name}**:\n\n`;
+      lResults.slice(0, 10).forEach(r => {
+        msg += `\u2022 ${new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-CL')}: **${formatCurrency(r.monto)}** (${r.categoria})\n`;
+      });
+      if (lResults.length > 10) msg += `\n*(Mostrando 10 de ${lResults.length} registros)*`;
+      return msg;
     }
 
     // 2. Logic for Top Analysis
