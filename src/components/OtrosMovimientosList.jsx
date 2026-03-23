@@ -8,11 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, Loader2, TrendingUp, TrendingDown, Calendar, Clock } from 'lucide-react';
+import { Trash2, Loader2, TrendingUp, TrendingDown, Calendar, Clock, Pencil } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import CajaSelector from '@/components/CajaSelector';
+import OtrosMovimientosForm from './OtrosMovimientosForm';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) => {
   const { toast } = useToast();
@@ -20,6 +22,9 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [movimientoToEdit, setMovimientoToEdit] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
@@ -58,51 +63,19 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
     setIsDeleting(true);
 
     try {
-      // 1. Obtener el registro a eliminar para saber sus detalles
       const movimiento = movimientos.find(m => m.id === confirmDeleteId);
       if (!movimiento) throw new Error("No se encontró el movimiento en la lista actual");
 
-      // 2. Sincronizar con Venta Diaria: Descontar el monto de su columna específica
-      const col = getVentaDiariaColumn(movimiento.tipo, movimiento.categorias_movimiento?.nombre);
-      
-      if (col) {
-        const { data: ventaDiaria, error: vdError } = await supabase
-          .from('venta_diaria')
-          .select(`id, ${col}`)
-          .eq('fecha', movimiento.fecha)
-          .eq('turno', movimiento.turno)
-          .eq('caja_id', movimiento.caja_id)
-          .maybeSingle();
-
-        if (vdError) throw vdError;
-
-        if (ventaDiaria) {
-          // Restar el monto (asegurando no bajar de 0)
-          const nuevoMonto = Math.max(0, (parseFloat(ventaDiaria[col]) || 0) - (parseFloat(movimiento.monto) || 0));
-          
-          const { error: updateError } = await supabase
-            .from('venta_diaria')
-            .update({ [col]: nuevoMonto })
-            .eq('id', ventaDiaria.id);
-            
-          if (updateError) {
-            console.error(`Error al actualizar la venta diaria (columna ${col}) durante el borrado:`, updateError);
-            throw new Error(`No se pudo sincronizar el borrado con la Venta Diaria (${col}).`);
-          }
-        }
-      }
-
-      // 3. Eliminar el registro en sí
+      // 1. Eliminar el registro en sí
       const { error: deleteError } = await supabase.from('otros_movimientos').delete().eq('id', confirmDeleteId);
       if (deleteError) throw deleteError;
+
+      // 2. Sincronizar con Venta Diaria usando la utilidad robusta
+      await recalculateVentaDiaria(supabase, movimiento.fecha, movimiento.turno, movimiento.caja_id);
       
-      toast({ title: 'Movimiento eliminado', description: 'El movimiento fue eliminado y sincronizado correctamente.' });
+      toast({ title: 'Movimiento eliminado', description: 'El movimiento fue eliminado y la Venta Diaria sincronizada correctamente.' });
       setMovimientos(prev => prev.filter(m => m.id !== confirmDeleteId));
       
-      // 4. Forzar refresco global si es necesario
-      if (typeof refreshTrigger !== 'undefined' && refreshTrigger !== null) {
-          // Llama al trigger global si existe en un contexto superior
-      }
     } catch (err) {
       console.error(err);
       toast({ title: 'Error al eliminar', description: err.message, variant: 'destructive' });
@@ -112,22 +85,15 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
     }
   };
 
-  const getVentaDiariaColumn = (tipo, catNombre) => {
-    if (!catNombre) return null;
-    const cat = catNombre.toLowerCase();
+  const handleEdit = (m) => {
+    setMovimientoToEdit(m);
+    setEditDialogOpen(true);
+  };
 
-    if (tipo === 'egreso') {
-      if (cat.startsWith('rrhh') || cat.startsWith('rr.hh') || cat.startsWith('recursos humanos')) return 'gastos_rrhh';
-      if (cat.startsWith('servicios')) return 'servicios';
-      if (cat.startsWith('gastos')) return 'gastos';
-      if (cat.startsWith('correcci')) return 'correccion_boletas';
-      if (cat.startsWith('traspaso') || cat.includes('entrega a tesorería')) return 'traspaso_tesoreria_egreso';
-      if (cat.startsWith('otros') && cat.includes('egresos')) return 'otros_egresos';
-    } else if (tipo === 'ingreso') {
-      if (cat.startsWith('traspaso') || cat.includes('recepción de tesorería')) return 'traspaso_tesoreria_ingreso';
-      return 'ingresos_efectivo'; // Cualquier otro ingreso se suma a ingresos_efectivo
-    }
-    return null;
+  const handleEditSuccess = () => {
+    setEditDialogOpen(false);
+    setMovimientoToEdit(null);
+    fetchMovimientos();
   };
 
   const fmt = (v) => `$${parseFloat(v || 0).toLocaleString('es-CL')}`;
@@ -230,10 +196,16 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
                         {m.tipo === 'ingreso' ? '+' : '-'}{fmt(m.monto)}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteId(m.id)}
-                          className="text-red-400 hover:text-red-500 hover:bg-red-500/10 h-8 w-8">
-                          <Trash2 className="h-4 w-4"/>
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEdit(m)}
+                            className="text-primary hover:text-primary/80 hover:bg-primary/10 h-8 w-8">
+                            <Pencil className="h-4 w-4"/>
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteId(m.id)}
+                            className="text-red-400 hover:text-red-500 hover:bg-red-500/10 h-8 w-8">
+                            <Trash2 className="h-4 w-4"/>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -266,6 +238,18 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
           </>
         )}
       </CardContent>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] p-0 bg-transparent border-none overflow-y-auto max-h-[90vh]">
+          <OtrosMovimientosForm 
+            editData={movimientoToEdit} 
+            onSuccess={handleEditSuccess} 
+            onCancel={() => setEditDialogOpen(false)}
+            globalCajaId={movimientoToEdit?.caja_id}
+            setGlobalCajaId={setGlobalCajaId}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!confirmDeleteId} onOpenChange={(open) => !open && setConfirmDeleteId(null)}>
         <DialogContent className="sm:max-w-[420px]">

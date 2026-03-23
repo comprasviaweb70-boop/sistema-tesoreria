@@ -12,11 +12,13 @@ import CajaSelector from '@/components/CajaSelector';
 import { useAuth } from '@/contexts/AuthContextObject';
 import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
-const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
+const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editData = null, onCancel = null }) => {
   const { userProfile } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [categorias, setCategorias] = useState([]);
+
+  const isEdit = !!editData?.id;
 
   const [formData, setFormData] = useState({
     tipo: 'ingreso',
@@ -27,6 +29,22 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
     turno: localStorage.getItem('vd_turno') || 'Mañana',
     medio_a_corregir: 'redelcom', // Default: Débito
   });
+
+  useEffect(() => {
+    if (editData) {
+      setFormData({
+        id: editData.id,
+        tipo: editData.tipo,
+        categoria_id: editData.categoria_id || '',
+        descripcion: editData.descripcion || '',
+        monto: editData.monto.toString(),
+        fecha: editData.fecha,
+        turno: editData.turno,
+        medio_a_corregir: editData.medio_a_corregir || 'redelcom',
+      });
+      if (editData.caja_id) setGlobalCajaId(editData.caja_id);
+    }
+  }, [editData]);
 
   useEffect(() => {
     fetchCategorias(formData.tipo);
@@ -52,8 +70,6 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
 
   /**
    * Sincroniza el movimiento con venta_diaria:
-   * - Ingreso → suma a ingresos_efectivo
-   * - Egreso  → suma a retiros_efectivo
    */
   const syncToVentaDiaria = async (monto) => {
     const selectedCat = categorias.find(c => c.id === formData.categoria_id);
@@ -113,47 +129,46 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
 
     setLoading(true);
     try {
-      // Check for duplicates
-      const { data: duplicates, error: dupError } = await supabase
-        .from('otros_movimientos')
-        .select('id')
-        .eq('fecha', formData.fecha)
-        .eq('monto', monto)
-        .eq('tipo', formData.tipo)
-        .limit(1);
-      
-      if (dupError) throw dupError;
-      
-      if (duplicates && duplicates.length > 0) {
-        const confirmDup = window.confirm(`¡Atención! Ya existe un ${formData.tipo} registrado hoy por $${monto.toLocaleString('es-CL')}. ¿Deseas registrar este movimiento de todas formas?`);
-        if (!confirmDup) {
-          setLoading(false);
-          return;
+      if (isEdit) {
+        // Prepare update
+        const updateObj = {
+          fecha: formData.fecha,
+          turno: formData.turno,
+          caja_id: globalCajaId,
+          tipo: formData.tipo,
+          categoria_id: formData.categoria_id || null,
+          descripcion: formData.descripcion || null,
+          monto,
+          medio_a_corregir: formData.medio_a_corregir || null
+        };
+
+        const { error } = await supabase.from('otros_movimientos').update(updateObj).eq('id', formData.id);
+        if (error) throw error;
+
+        // Sync with Venta Diaria
+        await syncToVentaDiaria(monto);
+        // If the date/box/shift changed, we should also sync the OLD one
+        if (editData.fecha !== formData.fecha || editData.turno !== formData.turno || editData.caja_id !== globalCajaId) {
+          await recalculateVentaDiaria(supabase, editData.fecha, editData.turno, editData.caja_id);
         }
+
+        toast({ title: 'Movimiento actualizado', description: 'Los cambios se han guardado y sincronizado.' });
+      } else {
+        // Insert logic
+        const { error } = await supabase.from('otros_movimientos').insert([{
+          fecha: formData.fecha,
+          turno: formData.turno,
+          caja_id: globalCajaId,
+          tipo: formData.tipo,
+          categoria_id: formData.categoria_id || null,
+          descripcion: formData.descripcion || null,
+          monto,
+        }]);
+        if (error) throw error;
+
+        await syncToVentaDiaria(monto);
+        toast({ title: 'Movimiento registrado', description: 'El nuevo registro ha sido sincronizado.' });
       }
-
-      const { error } = await supabase.from('otros_movimientos').insert([{
-        fecha: formData.fecha,
-        turno: formData.turno,
-        caja_id: globalCajaId,
-        tipo: formData.tipo,
-        categoria_id: formData.categoria_id || null,
-        descripcion: formData.descripcion || null,
-        monto,
-      }]);
-      if (error) throw error;
-
-      await syncToVentaDiaria(monto);
-
-      toast({
-        title: 'Movimiento registrado',
-        description: formData.tipo === 'ingreso'
-          ? `Ingreso de $${monto.toLocaleString('es-CL')} registrado.`
-          : `Egreso de $${monto.toLocaleString('es-CL')} registrado.`,
-        className: formData.tipo === 'ingreso'
-          ? 'bg-green-500/10 text-green-500 border-green-500/50'
-          : 'bg-amber-500/10 text-amber-500 border-amber-500/50',
-      });
 
       setFormData(prev => ({ ...prev, categoria_id: '', descripcion: '', monto: '' }));
       if (onSuccess) onSuccess();
@@ -296,10 +311,17 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
             </div>
           </div>
 
-          <Button type="submit" className="w-full accent-button" disabled={loading}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-            {loading ? 'Guardando...' : 'Registrar Movimiento'}
-          </Button>
+          <div className="flex gap-3">
+            {onCancel && (
+              <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={loading}>
+                Cancelar
+              </Button>
+            )}
+            <Button type="submit" className="flex-[2] accent-button" disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              {loading ? 'Guardando...' : (isEdit ? 'Guardar Cambios' : 'Registrar Movimiento')}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>
