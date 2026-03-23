@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContextObject';
 import { supabase } from '@/lib/customSupabaseClient';
 import CajaSelector from '@/components/CajaSelector';
 import { useToast } from '@/hooks/use-toast';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 const DENOMINATIONS = {
   billetes: [
@@ -126,38 +127,6 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
     .filter(k => k.startsWith('b') || k.startsWith('m'))
     .reduce((acc, key) => acc + (formData[key] || 0), 0);
 
-  const updateVentaDiariaValue = async (targetCajaId, fecha, turno, campo, montoDiff) => {
-    if (!targetCajaId || targetCajaId === 'all' || montoDiff === 0) return;
-
-    const { data: venta, error: fetchError } = await supabase
-      .from('venta_diaria')
-      .select(`id, ${campo}`)
-      .eq('fecha', fecha)
-      .eq('turno', turno)
-      .eq('caja_id', targetCajaId)
-      .maybeSingle();
-
-    if (fetchError) throw fetchError;
-
-    if (venta) {
-      const nuevoValor = (parseFloat(venta[campo]) || 0) + montoDiff;
-      const { error } = await supabase.from('venta_diaria').update({ [campo]: nuevoValor }).eq('id', venta.id);
-      if (error) throw error;
-    } else if (montoDiff > 0) {
-      // Solo crear si estamos sumando algo (no al restar de un registro que no existe)
-      const baseRecord = {
-        fecha,
-        turno,
-        caja_id: targetCajaId,
-        cajero_id: userProfile?.id,
-        estado: 'Abierto',
-        [campo]: montoDiff,
-        saldo_inicial: 0, venta_efectivo: 0, redelcom: 0, edenred: 0, transferencia: 0, credito: 0, total_ventas: 0
-      };
-      const { error } = await supabase.from('venta_diaria').insert([baseRecord]);
-      if (error) throw error;
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -216,14 +185,19 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       if (isEdit) {
         const result = await updateMovimiento(movimiento.id, finalMovimiento);
         if (result) {
-          // 1. Revertir impacto antiguo
-          const oldCampo = movimiento.tipo === 'ingreso' ? 'traspaso_tesoreria_egreso' : 'traspaso_tesoreria_ingreso';
-          await updateVentaDiariaValue(movimiento.caja_id, movimiento.fecha, movimiento.turno, oldCampo, -movimiento.monto_total);
-
-          // 2. Aplicar impacto nuevo (solo si hay cajaId)
-          if (finalCajaId) {
-            const newCampo = formData.tipo === 'ingreso' ? 'traspaso_tesoreria_egreso' : 'traspaso_tesoreria_ingreso';
-            await updateVentaDiariaValue(finalCajaId, formData.fecha, formData.turno, newCampo, totalCalculado);
+          // Re-sincronizar con el registro de venta diaria (ambas fechas/turnos por si cambiaron)
+          try {
+             // 1. Recalcular para la fecha/turno ORIGINAL del movimiento
+             await recalculateVentaDiaria(supabase, movimiento.fecha, movimiento.turno, movimiento.caja_id);
+             
+             // 2. Recalcular para la NUEVA fecha/turno/caja si son distintos
+             if (movimiento.fecha !== formData.fecha || 
+                 movimiento.turno !== formData.turno || 
+                 movimiento.caja_id !== finalCajaId) {
+                await recalculateVentaDiaria(supabase, formData.fecha, formData.turno, finalCajaId);
+             }
+          } catch (syncErr) {
+            console.error('Error syncing after update:', syncErr);
           }
 
           setOpen(false);
@@ -234,8 +208,11 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
         const result = await addMovimiento(finalMovimiento);
         if (result) {
           if (finalCajaId) {
-            const newCampo = formData.tipo === 'ingreso' ? 'traspaso_tesoreria_egreso' : 'traspaso_tesoreria_ingreso';
-            await updateVentaDiariaValue(finalCajaId, formData.fecha, formData.turno, newCampo, totalCalculado);
+            try {
+              await recalculateVentaDiaria(supabase, formData.fecha, formData.turno, finalCajaId);
+            } catch (syncErr) {
+              console.error('Error syncing after insert:', syncErr);
+            }
           }
           
           setOpen(false);

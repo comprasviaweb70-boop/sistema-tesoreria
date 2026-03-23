@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import AIConsultationSection from '@/components/AIConsultationSection';
 
 const formatCurrency = (val) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val || 0);
 
@@ -32,6 +33,7 @@ const InformesPage = () => {
   const [loading, setLoading] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const [isDailyExpanded, setIsDailyExpanded] = useState(true);
+  const [expandedDays, setExpandedDays] = useState({}); // { [fecha]: boolean }
 
   const [fechaInicio, setFechaInicio] = useState(() => {
     const d = new Date();
@@ -340,9 +342,8 @@ const InformesPage = () => {
     const finalResult = [...rows, ...Object.values(dailyTotals)];
     return finalResult.sort((a, b) => {
       if (a.fecha !== b.fecha) return new Date(b.fecha) - new Date(a.fecha);
-      if (a.isTotalLine) return 1;
-      if (b.isTotalLine) return -1;
-      return a.cajero.localeCompare(b.cajero);
+      if (a.isTotalLine) return -1; // Total line goes FIRST for each day
+      return 1; // Then the details
     });
   }, [diariaData, reservaMovimientos, movimientos, categorias, cajas]);
 
@@ -453,6 +454,11 @@ const InformesPage = () => {
           </Card>
         </div>
 
+        {/* Consulta IA Section */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150">
+          <AIConsultationSection stats={stats} dailyBalances={dailyBalances} />
+        </div>
+
         {/* Resumen Diario Consolidado */}
         <Card className="glass-card overflow-hidden">
           <CardHeader 
@@ -500,33 +506,54 @@ const InformesPage = () => {
                       <TableRow><TableCell colSpan={15} className="h-24 text-center italic text-muted-foreground">No hay datos de cierres para este periodo.</TableCell></TableRow>
                     ) : (
                       dailyBalances.map((day) => {
+                        const isExpanded = !!expandedDays[day.fecha];
+                        
+                        // Si es una línea de detalle y el día no está expandido, no renderizar
+                        if (!day.isTotalLine && !isExpanded) return null;
+
                         return (
-                          <TableRow key={day.fecha + day.cajero + (day.turno || '')} className={`hover:bg-secondary/10 transition-colors border-b border-border/50 ${day.isTotalLine ? 'bg-primary/5 font-extrabold' : ''}`}>
-                            <TableCell className="font-mono">
-                              {day.isTotalLine ? '' : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
+                          <TableRow 
+                            key={day.fecha + day.cajero + (day.turno || '')} 
+                            className={`transition-colors border-b border-border/50 ${
+                              day.isTotalLine 
+                                ? 'bg-primary/10 font-black cursor-pointer hover:bg-primary/20' 
+                                : 'bg-secondary/5 hover:bg-secondary/10'
+                            }`}
+                            onClick={() => {
+                              if (day.isTotalLine) {
+                                setExpandedDays(prev => ({ ...prev, [day.fecha]: !prev[day.fecha] }));
+                              }
+                            }}
+                          >
+                            <TableCell className="font-mono text-xs">
+                              {day.isTotalLine && (
+                                <div className="flex items-center gap-2">
+                                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                  {new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
+                                </div>
+                              )}
+                              {!day.isTotalLine && (
+                                <span className="opacity-0">{day.fecha}</span>
+                              )}
                             </TableCell>
-                            <TableCell className={day.isTotalLine ? 'text-primary' : (day.cajero === 'RESERVA' ? 'text-amber-500 italic' : '')}>
+                            <TableCell className={day.isTotalLine ? 'text-primary font-black' : (day.cajero === 'RESERVA' ? 'text-amber-500 italic pl-6' : 'pl-6 font-normal')}>
                               {day.cajero} {day.turno ? `(${day.turno[0]})` : ''}
                             </TableCell>
-                            <TableCell className="text-right">$ {day.venta_efectivo.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right">$ {day.redelcom.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right">$ {day.edenred.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right">$ {day.transferencia.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right">$ {day.credito.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right font-bold text-primary">$ {day.total_ventas.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right ${day.isTotalLine ? 'font-bold' : ''}`}>$ {day.venta_efectivo.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right ${day.isTotalLine ? 'font-bold' : ''}`}>$ {day.redelcom.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right ${day.isTotalLine ? 'font-bold' : ''}`}>$ {day.edenred.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right ${day.isTotalLine ? 'font-bold' : ''}`}>$ {day.transferencia.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right ${day.isTotalLine ? 'font-bold' : ''}`}>$ {day.credito.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right font-bold ${day.isTotalLine ? 'text-primary text-sm' : ''}`}>$ {day.total_ventas.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right">$ {day.pago_facturas_ctacte.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-red-500">$ {day.pago_facturas_caja.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-red-500">$ {day.gastos_rrhh_otros.toLocaleString('es-CL')}</TableCell>
                             <TableCell className={`text-right font-bold ${day.diferencia_caja < 0 ? 'text-red-500' : 'text-green-500'}`}>
                               {day.diferencia_caja > 0 ? '+' : ''} $ {day.diferencia_caja.toLocaleString('es-CL')}
                             </TableCell>
-                            <TableCell className="text-right font-bold bg-secondary/5">$ {day.cierre_caja.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right text-green-500 items-center justify-end gap-1">
-                              {day.ingreso_reserva > 0 && <span>$ {day.ingreso_reserva.toLocaleString('es-CL')}</span>}
-                            </TableCell>
-                            <TableCell className="text-right text-red-500 items-center justify-end gap-1">
-                              {day.retiro_reserva > 0 && <span>$ {day.retiro_reserva.toLocaleString('es-CL')}</span>}
-                            </TableCell>
+                            <TableCell className={`text-right font-bold ${day.isTotalLine ? 'bg-primary/5' : ''}`}>$ {day.cierre_caja.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className="text-right text-green-500">$ {day.ingreso_reserva.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className="text-right text-red-500">$ {day.retiro_reserva.toLocaleString('es-CL')}</TableCell>
                           </TableRow>
                         );
                       })

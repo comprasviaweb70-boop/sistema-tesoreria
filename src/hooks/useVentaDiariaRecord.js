@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 export function useVentaDiariaRecord({ fecha, turno, caja_id, cajero_id, autoCreate = false }) {
   const [record, setRecord] = useState(null);
@@ -83,6 +84,25 @@ export function useVentaDiariaRecord({ fecha, turno, caja_id, cajero_id, autoCre
         .single();
 
       if (error) throw error;
+      
+      // Recalcular para asegurar que traemos movimientos realizados ANTES de la creación
+      try {
+        await recalculateVentaDiaria(supabase, fecha, turno, caja_id);
+        // Volver a cargar el registro ahora que tiene los totales sincronizados
+        const { data: refreshed } = await supabase
+          .from('venta_diaria')
+          .select('*')
+          .eq('id', data.id)
+          .single();
+        
+        if (refreshed) {
+          setRecord(refreshed);
+          return refreshed;
+        }
+      } catch (syncErr) {
+        console.error('Error syncing after creation:', syncErr);
+      }
+
       setRecord(data);
       return data;
     } catch (err) {

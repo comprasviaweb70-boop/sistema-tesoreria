@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, CheckCircle2, Banknote, CreditCard } from 'lucide-react';
 import CajaSelector from '@/components/CajaSelector';
 import { useAuth } from '@/contexts/AuthContextObject';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refreshTrigger }) => {
   const { user, userProfile } = useAuth();
@@ -50,70 +51,26 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
    * Si es efectivo -> suma a pago_facturas_caja.
    * Si es CC -> suma a pago_facturas_cc.
    */
-  const syncToVentaDiaria = async (cajaId, isCC) => {
+  const syncToVentaDiaria = async (cajaId) => {
     const monto = parseFloat(formData.monto_pagado) || 0;
     if (monto <= 0) return null;
 
-    const columnToUpdate = isCC ? 'pago_facturas_cc' : 'pago_facturas_caja';
-
-    console.log(`Sincronizando a ${columnToUpdate} en venta_diaria:`, {
+    console.log(`Sincronizando pago de proveedor a venta_diaria:`, {
       fecha: formData.fecha_pago,
       turno: formData.turno,
       caja_id: cajaId,
     });
 
-    const { data: existingVenta, error: fetchError } = await supabase
-      .from('venta_diaria')
-      .select('id, pago_facturas_caja, pago_facturas_cc, cajero_id')
-      .eq('fecha', formData.fecha_pago)
-      .eq('turno', formData.turno)
-      .eq('caja_id', cajaId)
-      .maybeSingle();
-
-    if (fetchError) throw fetchError;
-
-    if (existingVenta) {
-      const currentVal = parseFloat(existingVenta[columnToUpdate]) || 0;
-      const nuevoPago = currentVal + monto;
-      
-      const { error } = await supabase
-        .from('venta_diaria')
-        .update({ [columnToUpdate]: nuevoPago })
-        .eq('id', existingVenta.id);
-      
-      if (error) throw error;
-      return existingVenta.cajero_id || null;
-    } else {
-      // No existe registro — lo creamos automáticamente
-      const { error: insertError } = await supabase.from('venta_diaria').insert([{
-        fecha: formData.fecha_pago,
-        turno: formData.turno,
-        caja_id: cajaId,
-        saldo_inicial: 0,
-        venta_efectivo: 0,
-        redelcom: 0,
-        tarjeta_credito: 0,
-        edenred: 0,
-        transferencia: 0,
-        credito: 0,
-        total_ventas: 0,
-        retiros_efectivo: 0,
-        pago_facturas_caja: isCC ? 0 : monto,
-        pago_facturas_cc: isCC ? monto : 0,
-        gastos_rrhh: 0,
-        servicios: 0,
-        gastos: 0,
-        correccion_boletas: 0,
-        otros_egresos: 0,
-        traspaso_tesoreria_ingreso: 0,
-        traspaso_tesoreria_egreso: 0,
-        cajero_id: userProfile?.id,
-        estado: 'Abierto',
-      }]);
-      
-      if (insertError) throw insertError;
-      return null;
+    // Usar la utilidad robusta para recalcular todo el registro
+    const result = await recalculateVentaDiaria(supabase, formData.fecha_pago, formData.turno, cajaId);
+    
+    // Devolvemos el cajero_id si ya existía el registro (para guardarlo en el pago si es necesario)
+    // Pero en realidad, el pago se guarda DESPUÉS, así que esto es opcional.
+    if (result && result.id) {
+       const { data } = await supabase.from('venta_diaria').select('cajero_id').eq('id', result.id).single();
+       return data?.cajero_id || null;
     }
+    return null;
   };
 
   const handleSubmit = async (e) => {
@@ -166,7 +123,7 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
       }
 
       // Sincronizar con venta_diaria (Caja o CC)
-      const cajero_id = await syncToVentaDiaria(effectiveCajaId, isCC);
+      const cajero_id = await syncToVentaDiaria(effectiveCajaId);
 
       const { error: insertError } = await supabase
         .from('pagos_proveedor')

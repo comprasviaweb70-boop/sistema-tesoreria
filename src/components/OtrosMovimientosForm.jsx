@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, CheckCircle2, TrendingUp, TrendingDown } from 'lucide-react';
 import CajaSelector from '@/components/CajaSelector';
 import { useAuth } from '@/contexts/AuthContextObject';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
   const { userProfile } = useAuth();
@@ -55,25 +56,12 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
    * - Egreso  → suma a retiros_efectivo
    */
   const syncToVentaDiaria = async (monto) => {
-    let campo;
     const selectedCat = categorias.find(c => c.id === formData.categoria_id);
     const catName = selectedCat?.nombre?.toLowerCase() || '';
     const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
     
-    if (formData.tipo === 'ingreso') {
-      if (catName.startsWith('traspaso')) campo = 'traspaso_tesoreria_ingreso';
-      else campo = 'ingresos_efectivo';
-    } else {
-      if (catName.startsWith('rrhh')) campo = 'gastos_rrhh';
-      else if (catName.startsWith('servicio')) campo = 'servicios';
-      else if (catName.startsWith('gasto')) campo = 'gastos';
-      else if (catName.startsWith('traspaso')) campo = 'traspaso_tesoreria_egreso';
-      else campo = 'otros_egresos';
-    }
-
-    // Para correcciones de boletas, no solo registramos el gasto/ingreso, 
-    // sino que ajustamos el desglose de ventas (Efectivo vs Otros Medios)
-    const updatePayload = {};
+    // Las correcciones de boletas requieren una lógica especial de ajuste de campos 
+    // que no es una simple suma de movimientos.
     if (isCorreccion) {
       const { data: currentVenta, error: fetchError } = await supabase
         .from('venta_diaria')
@@ -86,6 +74,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
       if (fetchError) throw fetchError;
 
       if (currentVenta) {
+        const updatePayload = {};
         if (formData.tipo === 'ingreso') {
           // Débito -> Efectivo (Aumenta efectivo, reduce el otro medio)
           updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + monto;
@@ -96,7 +85,6 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
           updatePayload[formData.medio_a_corregir] = (parseFloat(currentVenta[formData.medio_a_corregir]) || 0) + monto;
         }
         
-        // Ejecutar actualización de los campos de venta
         const { error: updateError } = await supabase
           .from('venta_diaria')
           .update(updatePayload)
@@ -104,49 +92,11 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId }) => {
         
         if (updateError) throw updateError;
       }
-      
-      // NOTA: No actualizamos ingresos_efectivo / correccion_boletas para evitar doble conteo
-      // en el cálculo del saldo, ya que el ajuste en venta_efectivo ya afecta al cierre_caja_sistema.
       return; 
     }
 
-    const { data: venta, error: fetchError } = await supabase
-      .from('venta_diaria')
-      .select(`id, ${campo}`)
-      .eq('fecha', formData.fecha)
-      .eq('turno', formData.turno)
-      .eq('caja_id', globalCajaId)
-      .maybeSingle();
-
-    if (fetchError) throw fetchError;
-
-    if (venta) {
-      const nuevoValor = (parseFloat(venta[campo]) || 0) + monto;
-      const { error } = await supabase
-        .from('venta_diaria')
-        .update({ [campo]: nuevoValor })
-        .eq('id', venta.id);
-      if (error) throw error;
-    } else {
-      const baseRecord = {
-        fecha: formData.fecha,
-        turno: formData.turno,
-        caja_id: globalCajaId,
-        saldo_inicial: 0, venta_efectivo: 0, redelcom: 0, edenred: 0,
-        transferencia: 0, credito: 0, total_ventas: 0,
-        ingresos_efectivo: 0, retiros_efectivo: 0,
-        pago_facturas_caja: 0, pago_facturas_cc: 0,
-        gastos_rrhh: 0, otros_gastos: 0,
-        servicios: 0, gastos: 0, correccion_boletas: 0, otros_egresos: 0,
-        traspaso_tesoreria_ingreso: 0, traspaso_tesoreria_egreso: 0,
-        cajero_id: userProfile?.id,
-        estado: 'Abierto',
-      };
-      baseRecord[campo] = monto;
-      const { error } = await supabase.from('venta_diaria').insert([baseRecord]);
-      if (error) throw error;
-      toast({ title: 'Aviso', description: `Se creó un registro de Venta Diaria para ${formData.fecha} - ${formData.turno}.` });
-    }
+    // Para todos los demás movimientos, usamos la utilidad de recalculo robusto
+    await recalculateVentaDiaria(supabase, formData.fecha, formData.turno, globalCajaId);
   };
 
   const handleSubmit = async (e) => {
