@@ -139,7 +139,6 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
           categoria_id: formData.categoria_id || null,
           descripcion: formData.descripcion || null,
           monto,
-          medio_a_corregir: formData.medio_a_corregir || null
         };
 
         const { error } = await supabase.from('otros_movimientos').update(updateObj).eq('id', formData.id);
