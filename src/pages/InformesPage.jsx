@@ -161,39 +161,10 @@ const InformesPage = () => {
     return filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   }, [movimientos, pagos, searchTerm, categorias]);
   const dailyBalances = useMemo(() => {
-    // 1. Agrupar AJUSTES CRUCES desde Otros Movimientos por fecha
-    const adjustments = movimientos.reduce((acc, curr) => {
-      const catName = (categorias[curr.categoria_id] || '').toLowerCase();
-      const isCorrection = catName.includes('correcci') || catName.includes('correccion') || catName.includes('corrección');
-      
-      if (isCorrection) {
-        const key = `${curr.fecha}_${curr.caja_id || 'RESERVA'}`;
-        if (!acc[key]) acc[key] = { cash: 0, card: 0 };
-        const monto = parseFloat(curr.monto) || 0;
-        
-        if (catName.includes('debito por efectivo') || catName.includes('débito por efectivo')) {
-          if (curr.tipo === 'egreso') {
-            acc[key].cash -= monto;
-            acc[key].card += monto;
-          } else {
-            acc[key].cash += monto;
-            acc[key].card -= monto;
-          }
-        } else if (catName.includes('efectivo por debito') || catName.includes('efectivo por débito')) {
-          if (curr.tipo === 'ingreso') {
-            acc[key].cash += monto;
-            acc[key].card -= monto;
-          } else {
-            acc[key].cash -= monto;
-            acc[key].card += monto;
-          }
-        } else {
-          const signado = curr.tipo === 'ingreso' ? monto : -monto;
-          acc[key].cash += signado;
-        }
-      }
-      return acc;
-    }, {});
+    // Los ajustes de corrección de boletas YA están reflejados en venta_diaria
+    // a través de ventaDiariaSync, por lo que NO se vuelven a aplicar aquí.
+    // Esto evita el doble-conteo en la columna de tarjeta.
+    const adjustments = {};
 
     // 2. Agrupar datos de venta_diaria por fecha y caja/turno
     const perBoxGroups = diariaData.reduce((acc, curr) => {
