@@ -180,11 +180,35 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
     if (!cajaId || !fecha || !turno) return;
     try {
       const result = await recalculateVentaDiaria(supabase, fecha, turno, cajaId);
+
       if (result?.action === 'updated') {
-        await refreshRecord();
-        toast({ title: 'Re-sincronizado', description: 'Los movimientos existentes fueron sincronizados correctamente.', className: 'bg-green-500/10 text-green-500 border-green-500/50' });
+        // Consulta directa para obtener el registro actualizado — evita problemas
+        // de comparación de estado de React que impedían el re-render.
+        const { data: freshRecord, error: fetchErr } = await supabase
+          .from('venta_diaria')
+          .select('*')
+          .eq('fecha', fecha)
+          .eq('turno', turno)
+          .eq('caja_id', cajaId)
+          .maybeSingle();
+
+        if (!fetchErr && freshRecord) {
+          setRecord(freshRecord);
+          setVentaData(calculateTotals(freshRecord));
+          
+          const camposSincronizados = (result.fields || []).join(', ');
+          toast({
+            title: '✓ Re-sincronizado',
+            description: `Campos actualizados: ${camposSincronizados || 'ninguno'}`,
+            className: 'bg-green-500/10 text-green-500 border-green-500/50'
+          });
+        }
       } else if (result?.action === 'skipped') {
-        toast({ title: 'Sin registro', description: 'No existe un registro de Venta Diaria para esta fecha/turno/caja. Créalo primero.', variant: 'destructive' });
+        toast({
+          title: 'Sin registro de Venta Diaria',
+          description: `No existe un registro para esta fecha (${fecha}), turno ${turno} y caja seleccionada. Crea el registro primero usando el botón "Crear Nuevo Registro".`,
+          variant: 'destructive'
+        });
       }
     } catch (err) {
       toast({ title: 'Error al re-sincronizar', description: err.message, variant: 'destructive' });
