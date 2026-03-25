@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Calendar, Upload, AlertCircle, PlusCircle, LayoutDashboard, RefreshCcw, History } from 'lucide-react';
@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/AuthContextObject';
 import { useVentaDiariaRecord } from '@/hooks/useVentaDiariaRecord';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 import Header from '@/components/Header';
 import SummaryPanel from '@/components/SummaryPanel';
 import SearchFilterBar from '@/components/SearchFilterBar';
@@ -35,7 +36,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
   const { toast } = useToast();
   const [discrepanciasPdf, setDiscrepanciasPdf] = useState({ ingresos: null, retiros: null });
 
-  const { record, setRecord, loading: hookLoading, createRecord } = useVentaDiariaRecord({
+  const { record, setRecord, loading: hookLoading, createRecord, refreshRecord } = useVentaDiariaRecord({
     fecha,
     turno,
     caja_id: cajaId,
@@ -162,16 +163,34 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
       toast({ title: 'Atención', description: 'Debe seleccionar una caja primero.', variant: 'destructive' });
       return;
     }
-    const newRecord = await createRecord();
-    if (newRecord) {
-      setVentaData(calculateTotals(newRecord));
-      setRecord(newRecord); // Asegurar sincronización inmediata
-      toast({
-        title: "Registro Creado",
-        description: "El registro de venta diaria ha sido creado exitosamente.",
-      });
+    await createRecord();
+    // Re-cargar para asegurarse de que los totales sincronizados (movimientos huérfanos) aparezcan
+    await refreshRecord();
+    toast({
+      title: "Registro Creado",
+      description: "El registro fue creado y sincronizado con los movimientos existentes.",
+    });
+  };
+
+  /**
+   * Re-sincroniza manualmente el registro actual con todos los movimientos existentes.
+   * Útil cuando se ingresaron movimientos ANTES de crear el registro de Venta Diaria.
+   */
+  const handleForceResync = async () => {
+    if (!cajaId || !fecha || !turno) return;
+    try {
+      const result = await recalculateVentaDiaria(supabase, fecha, turno, cajaId);
+      if (result?.action === 'updated') {
+        await refreshRecord();
+        toast({ title: 'Re-sincronizado', description: 'Los movimientos existentes fueron sincronizados correctamente.', className: 'bg-green-500/10 text-green-500 border-green-500/50' });
+      } else if (result?.action === 'skipped') {
+        toast({ title: 'Sin registro', description: 'No existe un registro de Venta Diaria para esta fecha/turno/caja. Créalo primero.', variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({ title: 'Error al re-sincronizar', description: err.message, variant: 'destructive' });
     }
   };
+
 
   const handleFieldChange = async (field, value) => {
     if (ventaData.estado === 'Cerrado') {
@@ -545,12 +564,26 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
                   )}
                 </div>
                 
-                <Link to="/reserva">
-                  <Button variant="outline" size="sm" className="glass-button border-primary/30 text-primary hover:bg-primary/10 gap-2">
-                    <History className="h-4 w-4" />
-                    Ir al Control de Reserva
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {ventaData && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleForceResync}
+                      className="glass-button border-green-500/30 text-green-400 hover:bg-green-500/10 gap-2"
+                      title="Re-sincronizar movimientos existentes con este registro"
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      Re-sincronizar
+                    </Button>
+                  )}
+                  <Link to="/reserva">
+                    <Button variant="outline" size="sm" className="glass-button border-primary/30 text-primary hover:bg-primary/10 gap-2">
+                      <History className="h-4 w-4" />
+                      Ir al Control de Reserva
+                    </Button>
+                  </Link>
+                </div>
               </h2>
             )}
 
