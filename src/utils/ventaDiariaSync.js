@@ -7,7 +7,7 @@
 export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
   if (!fecha || !turno || !cajaId || cajaId === 'all') return null;
 
-  console.log(`Recalculating Venta Diaria for: ${fecha}, ${turno}, ${cajaId}`);
+  console.log(`[ventaDiariaSync] Recalculating for: fecha=${fecha}, turno=${turno}, cajaId=${cajaId}`);
 
   try {
     // 1. Get Reserva Movements (Linked to this caja)
@@ -19,15 +19,15 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .eq('caja_id', cajaId);
 
     if (reservaError) throw reservaError;
+    console.log(`[ventaDiariaSync] reserva_movimientos: ${reservaMovs?.length ?? 0} records`);
 
-    // Sum reserva movements
     // INGRESOS in Reserva = EGRESO (Entrega a Tesorería) from Caja
     // EGRESOS in Reserva = INGRESO (Traspaso Recibido) to Caja
-    const sumTraspasoReservaIngreso = reservaMovs
+    const sumTraspasoReservaIngreso = (reservaMovs || [])
       .filter(m => m.tipo === 'egreso')
       .reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
     
-    const sumTraspasoReservaEgreso = reservaMovs
+    const sumTraspasoReservaEgreso = (reservaMovs || [])
       .filter(m => m.tipo === 'ingreso')
       .reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
 
@@ -40,19 +40,20 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .eq('caja_id', cajaId);
 
     if (otrosError) throw otrosError;
+    console.log(`[ventaDiariaSync] otros_movimientos: ${otrosMovs?.length ?? 0} records`);
 
     // Aggregates for Otros Movimientos
     const aggregates = {
       ingresos_efectivo: 0,
-      traspaso_tesoreria_ingreso: sumTraspasoReservaIngreso, // Start with reserva value
-      traspaso_tesoreria_egreso: sumTraspasoReservaEgreso,   // Start with reserva value
+      traspaso_tesoreria_ingreso: sumTraspasoReservaIngreso,
+      traspaso_tesoreria_egreso: sumTraspasoReservaEgreso,
       gastos_rrhh: 0,
       servicios: 0,
       gastos: 0,
       otros_egresos: 0
     };
 
-    otrosMovs.forEach(m => {
+    (otrosMovs || []).forEach(m => {
       const monto = parseFloat(m.monto) || 0;
       const catName = m.categorias_movimiento?.nombre?.toLowerCase() || '';
       const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
@@ -83,7 +84,7 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       }
     });
 
-    // 3. Get Supplier Payments
+    // 3. Get Supplier Payments — filter by fecha + turno + caja_id
     const { data: supplierPagos, error: supplierError } = await supabase
       .from('pagos_proveedor')
       .select('monto_pagado, origen_fondos')
@@ -92,23 +93,33 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .eq('caja_id', cajaId);
 
     if (supplierError) throw supplierError;
+    console.log(`[ventaDiariaSync] pagos_proveedor found: ${supplierPagos?.length ?? 0} records`);
+    if (supplierPagos?.length) {
+      supplierPagos.forEach(p => console.log(`  -> origen=${p.origen_fondos}, monto=${p.monto_pagado}`));
+    }
 
-    const sumPagosCaja = supplierPagos
-      .filter(p => p.origen_fondos === 'caja')
+    // Cash payments: both 'caja' and 'efectivo' are treated as cash
+    const sumPagosCaja = (supplierPagos || [])
+      .filter(p => {
+        const metodo = (p.origen_fondos || '').toLowerCase().trim();
+        return metodo === 'caja' || metodo === 'efectivo';
+      })
       .reduce((acc, p) => acc + (parseFloat(p.monto_pagado) || 0), 0);
     
-    const sumPagosCC = supplierPagos
-      .filter(p => p.origen_fondos === 'cuenta_corriente')
+    const sumPagosCC = (supplierPagos || [])
+      .filter(p => (p.origen_fondos || '').toLowerCase().trim() === 'cuenta_corriente')
       .reduce((acc, p) => acc + (parseFloat(p.monto_pagado) || 0), 0);
 
-    // 4. Update or Upsert Venta Diaria
+    console.log(`[ventaDiariaSync] sumPagosCaja=${sumPagosCaja}, sumPagosCC=${sumPagosCC}`);
+
+    // 4. Build update payload
     const updateData = {
       ...aggregates,
       pago_facturas_caja: sumPagosCaja,
       pago_facturas_cc: sumPagosCC
     };
 
-    // Check if record exists
+    // 5. Find existing venta_diaria record
     const { data: existing, error: findError } = await supabase
       .from('venta_diaria')
       .select('id')
@@ -120,6 +131,7 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
     if (findError) throw findError;
 
     if (existing) {
+      console.log(`[ventaDiariaSync] Updating existing record id=${existing.id}`);
       const { error: updateError } = await supabase
         .from('venta_diaria')
         .update(updateData)
@@ -128,34 +140,13 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       if (updateError) throw updateError;
       return { action: 'updated', id: existing.id };
     } else {
-      // Create new record with default values + our calculated totals
-      const newData = {
-        fecha,
-        turno,
-        caja_id: cajaId,
-        estado: 'Abierto',
-        saldo_inicial: 0,
-        venta_efectivo: 0,
-        redelcom: 0,
-        tarjeta_credito: 0,
-        edenred: 0,
-        transferencia: 0,
-        credito: 0,
-        total_ventas: 0,
-        ...updateData
-      };
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('venta_diaria')
-        .insert([newData])
-        .select()
-        .single();
-      
-      if (insertError) throw insertError;
-      return { action: 'created', id: inserted.id };
+      // Only update existing records — never auto-create to avoid RLS errors and data pollution.
+      // The user must create venta_diaria records intentionally via the Venta Diaria page.
+      console.warn(`[ventaDiariaSync] No venta_diaria record found — skipping. fecha=${fecha}, turno=${turno}, cajaId=${cajaId}`);
+      return { action: 'skipped', reason: 'no record found for this fecha/turno/caja' };
     }
   } catch (error) {
-    console.error('Error in recalculateVentaDiaria:', error);
+    console.error('[ventaDiariaSync] Error:', error);
     throw error;
   }
 }

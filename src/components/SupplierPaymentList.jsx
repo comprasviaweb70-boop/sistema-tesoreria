@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pencil, Trash2, Loader2, FileText, ExternalLink, Banknote, CreditCard, Search, Calendar, Clock, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Pencil, Trash2, Loader2, FileText, ExternalLink, Banknote, CreditCard, Search, Calendar, Clock, Building2, ChevronDown, ChevronUp, RefreshCcw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 import CajaSelector from '@/components/CajaSelector';
 
 const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) => {
@@ -95,8 +96,11 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
       
       if (oldError) throw oldError;
 
-      // 2. REVERSAR el impacto del pago viejo en Venta Diaria
-      await adjustVentaDiaria(oldPago, -1);
+      // 2. Si la fecha/turno/caja cambió, recalcular el slot ORIGINAL primero
+      //    (con el registro AÚN en la BD, el recalculo tendrá el valor viejo)
+      const slotCambio = oldPago.fecha_pago !== editingPayment.fecha_pago ||
+          oldPago.turno !== editingPayment.turno ||
+          oldPago.caja_id !== editingPayment.caja_id;
 
       // 3. ACTUALIZAR el registro del pago
       const { error: updateError } = await supabase
@@ -113,9 +117,16 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
       
       if (updateError) throw updateError;
 
-      // 4. APLICAR el impacto del pago nuevo en Venta Diaria
-      // Nota: lo hacemos después de actualizar pagos_proveedor para que sea consistente
-      await adjustVentaDiaria(editingPayment, 1);
+      // 4. Recalcular el slot NUEVO (ahora el pago ya tiene los datos actualizados)
+      if (editingPayment.caja_id && editingPayment.fecha_pago) {
+        await recalculateVentaDiaria(supabase, editingPayment.fecha_pago, editingPayment.turno, editingPayment.caja_id);
+      }
+
+      // 5. Si el slot original era distinto, también recalcularlo
+      //    (el pago ya no pertenece a ese slot, por ende el total baja)
+      if (slotCambio && oldPago.caja_id && oldPago.fecha_pago) {
+        await recalculateVentaDiaria(supabase, oldPago.fecha_pago, oldPago.turno, oldPago.caja_id);
+      }
 
       toast({ title: 'Pago actualizado', description: 'Los cambios fueron guardados y sincronizados correctamente.' });
       setIsEditModalOpen(false);
@@ -129,44 +140,11 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
   };
 
   /**
-   * Ajusta la venta diaria sumando o restando (multiplier 1 o -1)
+   * Ajusta la venta diaria recalculando los totales
    */
-  const adjustVentaDiaria = async (pago, multiplier) => {
-    const isCC = (pago.origen_fondos || '').toLowerCase().includes('corriente');
-    const column = isCC ? 'pago_facturas_cc' : 'pago_facturas_caja';
-    const monto = (parseFloat(pago.monto_pagado) || 0) * multiplier;
-
+  const adjustVentaDiaria = async (pago) => {
     if (!pago.caja_id || !pago.fecha_pago) return;
-
-    // Buscar si existe registro para ese dia/caja/turno
-    const { data: vd, error: fetchError } = await supabase
-      .from('venta_diaria')
-      .select('id, ' + column)
-      .eq('fecha', pago.fecha_pago)
-      .eq('turno', pago.turno)
-      .eq('caja_id', pago.caja_id)
-      .maybeSingle();
-    
-    if (fetchError) throw fetchError;
-
-    if (vd) {
-      const newVal = Math.max(0, (parseFloat(vd[column]) || 0) + monto);
-      const { error: upError } = await supabase
-        .from('venta_diaria')
-        .update({ [column]: newVal })
-        .eq('id', vd.id);
-      if (upError) throw upError;
-    } else if (multiplier === 1) {
-      // Si estamos sumando y no existe el registro, lo creamos (igual que en SupplierPaymentForm)
-      const { error: insError } = await supabase.from('venta_diaria').insert([{
-        fecha: pago.fecha_pago,
-        turno: pago.turno,
-        caja_id: pago.caja_id,
-        [column]: Math.max(0, monto),
-        estado: 'Abierto'
-      }]);
-      if (insError) throw insError;
-    }
+    await recalculateVentaDiaria(supabase, pago.fecha_pago, pago.turno, pago.caja_id);
   };
 
   const handleConfirmDelete = async () => {
@@ -178,38 +156,12 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
       const pago = payments.find(p => p.id === confirmDeleteId);
       if (!pago) throw new Error("No se encontró el pago en la lista actual");
 
-      // 2. Si el pago fue en efectivo, intentar descontarlo de la Venta Diaria
-      const tipoPago = getTipoPago(pago);
-      if (tipoPago === 'efectivo' || tipoPago === 'caja') {
-        const { data: ventaDiaria, error: vdError } = await supabase
-          .from('venta_diaria')
-          .select('id, pago_facturas_caja')
-          .eq('fecha', pago.fecha_pago)
-          .eq('turno', pago.turno)
-          .eq('caja_id', pago.caja_id)
-          .maybeSingle();
-
-        if (vdError) throw vdError;
-
-        if (ventaDiaria) {
-          // Restar el monto pagado del total de facturas de caja
-          const nuevoMontoFacturas = Math.max(0, (parseFloat(ventaDiaria.pago_facturas_caja) || 0) - (parseFloat(pago.monto_pagado) || 0));
-          
-          const { error: updateError } = await supabase
-            .from('venta_diaria')
-            .update({ pago_facturas_caja: nuevoMontoFacturas })
-            .eq('id', ventaDiaria.id);
-            
-          if (updateError) {
-            console.error("Error al actualizar la venta diaria durante el borrado:", updateError);
-            throw new Error("No se pudo sincronizar el borrado con la Venta Diaria.");
-          }
-        }
-      }
-
-      // 3. Eliminar el registro de pagos_proveedor
+      // 2. Eliminar el registro de pagos_proveedor
       const { error: deleteError } = await supabase.from('pagos_proveedor').delete().eq('id', confirmDeleteId);
       if (deleteError) throw deleteError;
+
+      // 3. Sincronizar con la Venta Diaria recalculando (DESPUÉS de eliminar)
+      await adjustVentaDiaria(pago);
       
       toast({ title: 'Pago eliminado', description: 'El pago fue eliminado y sincronizado correctamente.' });
       setPayments(prev => prev.filter(p => p.id !== confirmDeleteId));
@@ -229,6 +181,27 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
 
   const formatCurrency = (val) =>
     `$${parseFloat(val || 0).toLocaleString('es-CL')}`;
+
+  /**
+   * Fuerza la re-sincronización de un pago con su registro de Venta Diaria.
+   * Útil para recuperar registros que quedaron desincronizados.
+   */
+  const handleForceResync = async (pago) => {
+    if (!pago.caja_id || !pago.fecha_pago) {
+      toast({ title: 'Sin datos suficientes', description: 'Este pago no tiene caja o fecha asignada.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const result = await recalculateVentaDiaria(supabase, pago.fecha_pago, pago.turno, pago.caja_id);
+      if (result?.action === 'updated') {
+        toast({ title: 'Re-sincronizado', description: `Venta Diaria actualizada correctamente.`, className: 'bg-green-500/10 text-green-500 border-green-500/50' });
+      } else if (result?.action === 'skipped') {
+        toast({ title: 'Sin registro de Venta Diaria', description: `No existe un registro de Venta Diaria para ${pago.fecha_pago} (${pago.turno}). Créalo primero.`, variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({ title: 'Error en re-sincronización', description: err.message, variant: 'destructive' });
+    }
+  };
 
   const getTipoPago = (p) => p.tipo_pago || p.origen_fondos || 'efectivo';
 
@@ -445,6 +418,15 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleForceResync(p)}
+                                  className="text-green-400 hover:text-green-500 hover:bg-green-500/10 h-8 w-8"
+                                  title="Re-sincronizar con Venta Diaria"
+                                >
+                                  <RefreshCcw className="h-4 w-4" />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="icon"

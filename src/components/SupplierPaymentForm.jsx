@@ -122,14 +122,10 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
         }
       }
 
-      // Sincronizar con venta_diaria (Caja o CC)
-      const cajero_id = await syncToVentaDiaria(effectiveCajaId);
-
       const { error: insertError } = await supabase
         .from('pagos_proveedor')
         .insert([{
           proveedor_id: formData.proveedor_id,
-          cajero_id,
           caja_id: effectiveCajaId,
           fecha_pago: formData.fecha_pago,
           monto_pagado: parseFloat(formData.monto_pagado),
@@ -138,6 +134,9 @@ const SupplierPaymentForm = ({ onSuccess, globalCajaId, setGlobalCajaId, refresh
         }]);
 
       if (insertError) throw insertError;
+
+      // Sincronizar con venta_diaria (Caja o CC) DESPUÉS de insertar
+      await recalculateVentaDiaria(supabase, formData.fecha_pago, formData.turno, effectiveCajaId);
 
       toast({
         title: 'Pago registrado',
