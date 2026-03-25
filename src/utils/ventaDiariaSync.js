@@ -7,22 +7,25 @@
 export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
   if (!fecha || !turno || !cajaId || cajaId === 'all') return null;
 
+  const debug = { fecha, turno, cajaId, sources: {} };
   console.log(`[ventaDiariaSync] Recalculating for: fecha=${fecha}, turno=${turno}, cajaId=${cajaId}`);
 
   try {
     // 1. Get Reserva Movements (Linked to this caja)
     const { data: reservaMovs, error: reservaError } = await supabase
       .from('reserva_movimientos')
-      .select('tipo, monto_total')
+      .select('tipo, monto_total, descripcion')
       .eq('fecha', fecha)
       .eq('turno', turno)
       .eq('caja_id', cajaId);
 
     if (reservaError) throw reservaError;
+    debug.sources.reserva = reservaMovs?.length ?? 0;
     console.log(`[ventaDiariaSync] reserva_movimientos: ${reservaMovs?.length ?? 0} records`);
+    (reservaMovs || []).forEach(m => console.log(`  -> tipo=${m.tipo}, monto=${m.monto_total}, desc="${m.descripcion}"`));
 
-    // INGRESOS in Reserva = EGRESO (Entrega a Tesorería) from Caja
-    // EGRESOS in Reserva = INGRESO (Traspaso Recibido) to Caja
+    // INGRESOS in Reserva = EGRESO (Entrega a Tesorería) from Caja → traspaso_tesoreria_egreso in VD
+    // EGRESOS in Reserva = INGRESO (Traspaso Recibido) to Caja → traspaso_tesoreria_ingreso in VD
     const sumTraspasoReservaIngreso = (reservaMovs || [])
       .filter(m => m.tipo === 'egreso')
       .reduce((acc, m) => acc + (parseFloat(m.monto_total) || 0), 0);
@@ -40,9 +43,10 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .eq('caja_id', cajaId);
 
     if (otrosError) throw otrosError;
+    debug.sources.otros = otrosMovs?.length ?? 0;
     console.log(`[ventaDiariaSync] otros_movimientos: ${otrosMovs?.length ?? 0} records`);
 
-    // Aggregates for Otros Movimientos
+    // Build combined aggregates (Reserva + Otros)
     const aggregates = {
       ingresos_efectivo: 0,
       traspaso_tesoreria_ingreso: sumTraspasoReservaIngreso,
@@ -58,9 +62,6 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       const catName = m.categorias_movimiento?.nombre?.toLowerCase() || '';
       const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
 
-      // Note: Corrections are handled separately in the form (modifying venta_efectivo directly)
-      // and should not be counted here to avoid double counting balances, 
-      // but we need to check how they are stored.
       if (isCorreccion) return; 
 
       if (m.tipo === 'ingreso') {
@@ -93,10 +94,8 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .eq('caja_id', cajaId);
 
     if (supplierError) throw supplierError;
+    debug.sources.pagos = supplierPagos?.length ?? 0;
     console.log(`[ventaDiariaSync] pagos_proveedor found: ${supplierPagos?.length ?? 0} records`);
-    if (supplierPagos?.length) {
-      supplierPagos.forEach(p => console.log(`  -> origen=${p.origen_fondos}, monto=${p.monto_pagado}`));
-    }
 
     // Cash payments: both 'caja' and 'efectivo' are treated as cash
     const sumPagosCaja = (supplierPagos || [])
@@ -110,34 +109,15 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
       .filter(p => (p.origen_fondos || '').toLowerCase().trim() === 'cuenta_corriente')
       .reduce((acc, p) => acc + (parseFloat(p.monto_pagado) || 0), 0);
 
-    console.log(`[ventaDiariaSync] sumPagosCaja=${sumPagosCaja}, sumPagosCC=${sumPagosCC}`);
+    // 4. Build FULL update payload with ALL aggregated values from ALL sources
+    const updateData = {
+      ...aggregates,
+      pago_facturas_caja: sumPagosCaja,
+      pago_facturas_cc: sumPagosCC
+    };
 
-    // 4. Build PARTIAL update payload — only include fields from sources that returned data.
-    // This prevents zeroing out existing values when a source has no records for this slot.
-    const updateData = {};
-
-    // From reserva_movimientos
-    if (reservaMovs !== null) {
-      updateData.traspaso_tesoreria_ingreso = sumTraspasoReservaIngreso;
-      updateData.traspaso_tesoreria_egreso = sumTraspasoReservaEgreso;
-    }
-
-    // From otros_movimientos
-    if (otrosMovs !== null) {
-      updateData.ingresos_efectivo = aggregates.ingresos_efectivo;
-      updateData.gastos_rrhh = aggregates.gastos_rrhh;
-      updateData.servicios = aggregates.servicios;
-      updateData.gastos = aggregates.gastos;
-      updateData.otros_egresos = aggregates.otros_egresos;
-    }
-
-    // From pagos_proveedor
-    if (supplierPagos !== null) {
-      updateData.pago_facturas_caja = sumPagosCaja;
-      updateData.pago_facturas_cc = sumPagosCC;
-    }
-
-    console.log(`[ventaDiariaSync] updateData keys: ${Object.keys(updateData).join(', ')}`);
+    debug.updateData = { ...updateData };
+    console.log(`[ventaDiariaSync] updateData:`, JSON.stringify(updateData));
 
     // 5. Find existing venta_diaria record
     const { data: existing, error: findError } = await supabase
@@ -158,12 +138,10 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
         .eq('id', existing.id);
       
       if (updateError) throw updateError;
-      return { action: 'updated', id: existing.id, fields: Object.keys(updateData) };
+      return { action: 'updated', id: existing.id, fields: Object.keys(updateData), debug };
     } else {
-      // Only update existing records — never auto-create to avoid RLS errors and data pollution.
-      // The user must create venta_diaria records intentionally via the Venta Diaria page.
       console.warn(`[ventaDiariaSync] No venta_diaria record found — skipping. fecha=${fecha}, turno=${turno}, cajaId=${cajaId}`);
-      return { action: 'skipped', reason: 'no record found for this fecha/turno/caja' };
+      return { action: 'skipped', reason: 'no record found for this fecha/turno/caja', debug };
     }
   } catch (error) {
     console.error('[ventaDiariaSync] Error:', error);

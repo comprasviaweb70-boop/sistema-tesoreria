@@ -174,16 +174,47 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
 
   /**
    * Re-sincroniza manualmente el registro actual con todos los movimientos existentes.
-   * Útil cuando se ingresaron movimientos ANTES de crear el registro de Venta Diaria.
+   * Muestra un alert detallado con la información de diagnóstico.
    */
   const handleForceResync = async () => {
     if (!cajaId || !fecha || !turno) return;
     try {
       const result = await recalculateVentaDiaria(supabase, fecha, turno, cajaId);
+      const d = result?.debug || {};
+      const src = d.sources || {};
+      const upd = d.updateData || {};
+
+      // Siempre mostrar un alert de diagnóstico para depuración
+      const diagLines = [
+        `RESULTADO: ${result?.action || 'desconocido'}`,
+        `Fecha: ${fecha} | Turno: ${turno}`,
+        `Caja ID: ${cajaId}`,
+        ``,
+        `FUENTES ENCONTRADAS:`,
+        `  Reserva Movimientos: ${src.reserva ?? '?'} registros`,
+        `  Otros Movimientos: ${src.otros ?? '?'} registros`,
+        `  Pagos Proveedor: ${src.pagos ?? '?'} registros`,
+        ``,
+        `VALORES CALCULADOS:`,
+        `  Traspaso Tesorería (Ingreso): $${(upd.traspaso_tesoreria_ingreso || 0).toLocaleString('es-CL')}`,
+        `  Traspaso Tesorería (Egreso): $${(upd.traspaso_tesoreria_egreso || 0).toLocaleString('es-CL')}`,
+        `  Ingresos Efectivo: $${(upd.ingresos_efectivo || 0).toLocaleString('es-CL')}`,
+        `  Gastos RRHH: $${(upd.gastos_rrhh || 0).toLocaleString('es-CL')}`,
+        `  Servicios: $${(upd.servicios || 0).toLocaleString('es-CL')}`,
+        `  Gastos: $${(upd.gastos || 0).toLocaleString('es-CL')}`,
+        `  Otros Egresos: $${(upd.otros_egresos || 0).toLocaleString('es-CL')}`,
+        `  Pago Facturas Caja: $${(upd.pago_facturas_caja || 0).toLocaleString('es-CL')}`,
+        `  Pago Facturas CC: $${(upd.pago_facturas_cc || 0).toLocaleString('es-CL')}`,
+      ];
+
+      if (result?.action === 'skipped') {
+        diagLines.push('', `MOTIVO: ${result.reason}`);
+      }
+
+      window.alert(diagLines.join('\n'));
 
       if (result?.action === 'updated') {
-        // Consulta directa para obtener el registro actualizado — evita problemas
-        // de comparación de estado de React que impedían el re-render.
+        // Re-obtener registro actualizado directamente
         const { data: freshRecord, error: fetchErr } = await supabase
           .from('venta_diaria')
           .select('*')
@@ -195,22 +226,15 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
         if (!fetchErr && freshRecord) {
           setRecord(freshRecord);
           setVentaData(calculateTotals(freshRecord));
-          
-          const camposSincronizados = (result.fields || []).join(', ');
           toast({
             title: '✓ Re-sincronizado',
-            description: `Campos actualizados: ${camposSincronizados || 'ninguno'}`,
+            description: 'Los valores fueron actualizados.',
             className: 'bg-green-500/10 text-green-500 border-green-500/50'
           });
         }
-      } else if (result?.action === 'skipped') {
-        toast({
-          title: 'Sin registro de Venta Diaria',
-          description: `No existe un registro para esta fecha (${fecha}), turno ${turno} y caja seleccionada. Crea el registro primero usando el botón "Crear Nuevo Registro".`,
-          variant: 'destructive'
-        });
       }
     } catch (err) {
+      window.alert(`ERROR EN RE-SYNC:\n${err.message}`);
       toast({ title: 'Error al re-sincronizar', description: err.message, variant: 'destructive' });
     }
   };
