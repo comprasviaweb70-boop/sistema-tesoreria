@@ -112,12 +112,32 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
 
     console.log(`[ventaDiariaSync] sumPagosCaja=${sumPagosCaja}, sumPagosCC=${sumPagosCC}`);
 
-    // 4. Build update payload
-    const updateData = {
-      ...aggregates,
-      pago_facturas_caja: sumPagosCaja,
-      pago_facturas_cc: sumPagosCC
-    };
+    // 4. Build PARTIAL update payload — only include fields from sources that returned data.
+    // This prevents zeroing out existing values when a source has no records for this slot.
+    const updateData = {};
+
+    // From reserva_movimientos
+    if (reservaMovs !== null) {
+      updateData.traspaso_tesoreria_ingreso = sumTraspasoReservaIngreso;
+      updateData.traspaso_tesoreria_egreso = sumTraspasoReservaEgreso;
+    }
+
+    // From otros_movimientos
+    if (otrosMovs !== null) {
+      updateData.ingresos_efectivo = aggregates.ingresos_efectivo;
+      updateData.gastos_rrhh = aggregates.gastos_rrhh;
+      updateData.servicios = aggregates.servicios;
+      updateData.gastos = aggregates.gastos;
+      updateData.otros_egresos = aggregates.otros_egresos;
+    }
+
+    // From pagos_proveedor
+    if (supplierPagos !== null) {
+      updateData.pago_facturas_caja = sumPagosCaja;
+      updateData.pago_facturas_cc = sumPagosCC;
+    }
+
+    console.log(`[ventaDiariaSync] updateData keys: ${Object.keys(updateData).join(', ')}`);
 
     // 5. Find existing venta_diaria record
     const { data: existing, error: findError } = await supabase
@@ -138,7 +158,7 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
         .eq('id', existing.id);
       
       if (updateError) throw updateError;
-      return { action: 'updated', id: existing.id };
+      return { action: 'updated', id: existing.id, fields: Object.keys(updateData) };
     } else {
       // Only update existing records — never auto-create to avoid RLS errors and data pollution.
       // The user must create venta_diaria records intentionally via the Venta Diaria page.

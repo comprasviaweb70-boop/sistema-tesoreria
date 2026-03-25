@@ -116,11 +116,33 @@ export function useVentaDiariaRecord({ fecha, turno, caja_id, cajero_id, autoCre
     }
   };
 
+  /**
+   * Re-fetch silently without clearing state first (no flicker).
+   * Use this when you want to refresh after a sync without the form disappearing.
+   */
+  const silentRefresh = useCallback(async () => {
+    if (!fecha || !turno || !caja_id) return;
+    try {
+      const { data, error } = await supabase
+        .from('venta_diaria')
+        .select('*')
+        .eq('fecha', fecha)
+        .eq('turno', turno)
+        .eq('caja_id', caja_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) setRecord(data);
+    } catch (err) {
+      console.error('[useVentaDiariaRecord] silentRefresh error:', err);
+    }
+  }, [fecha, turno, caja_id]);
+
   return { 
     record, 
     setRecord,
     loading, 
     createRecord: createRecordInternal,
-    refreshRecord: fetchRecord
+    refreshRecord: silentRefresh,      // silently updates without clearing (used by Re-sync button)
+    fullRefresh: fetchRecord            // full reload with loading state (used on mount/param change)
   };
 }
