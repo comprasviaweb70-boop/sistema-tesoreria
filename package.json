@@ -35,7 +35,8 @@
     "react-helmet": "^6.1.0",
     "react-router-dom": "^7.1.1",
     "tailwind-merge": "^2.6.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@babel/generator": "^7.26.3",

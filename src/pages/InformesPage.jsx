@@ -17,6 +17,7 @@ import {
   History
 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
+import * as XLSX from 'xlsx';
 import Header from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,6 +137,8 @@ const InformesPage = () => {
         tipo: m.tipo,
         categoria: categorias[m.categoria_id] || 'General',
         origen: 'Otros Movimientos',
+        cajaNombre: cajas.find(c => c.id === m.caja_id)?.nombre || `Caja ${m.caja_id?.split('-')[0] || '?'}`,
+        tipoPago: 'Efectivo Caja',
       });
     });
 
@@ -148,6 +151,8 @@ const InformesPage = () => {
         tipo: 'egreso',
         categoria: 'Pago Proveedor',
         origen: 'Pagos Proveedor',
+        cajaNombre: p.origen_fondos === 'cuenta_corriente' ? 'Bancos/CtaCte' : (cajas.find(c => c.id === p.caja_id)?.nombre || `Caja ${p.caja_id?.split('-')[0] || '?'}`),
+        tipoPago: p.origen_fondos === 'cuenta_corriente' ? 'Cta. Corriente' : 'Efectivo Caja',
       });
     });
 
@@ -159,7 +164,7 @@ const InformesPage = () => {
     );
 
     return filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  }, [movimientos, pagos, searchTerm, categorias]);
+  }, [movimientos, pagos, searchTerm, categorias, cajas]);
   const dailyBalances = useMemo(() => {
     // Los ajustes de corrección de boletas YA están reflejados en venta_diaria
     // a través de ventaDiariaSync, por lo que NO se vuelven a aplicar aquí.
@@ -329,6 +334,28 @@ const InformesPage = () => {
 
     return { totalEgresos, totalIngresos, rrhhTotal, count: results.length };
   }, [results]);
+
+  const handleExportExcel = (e) => {
+    e.stopPropagation();
+    if (results.length === 0) return;
+
+    const exportData = results.map(item => ({
+      Fecha: new Date(item.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
+      'Beneficiario / Concepto': item.beneficiario,
+      Categoría: item.categoria,
+      Módulo: item.origen,
+      'Caja Origen / Destino': item.cajaNombre,
+      'Tipo de Pago': item.tipoPago,
+      Tipo: item.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+      Monto: item.monto
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Movimientos");
+    
+    XLSX.writeFile(workbook, `Movimientos_y_Pagos_${fechaInicio}_al_${fechaFin}.xlsx`);
+  };
 
   return (
     <div className="gradient-bg min-h-screen">
@@ -556,9 +583,20 @@ const InformesPage = () => {
                 </CardDescription>
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="gap-2">
-              {isDetailsExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
-            </Button>
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 h-8 border-green-600/30 hover:bg-green-600/10 text-green-600 dark:text-green-400" 
+                onClick={handleExportExcel}
+                disabled={results.length === 0}
+              >
+                <Download className="h-4 w-4" /> Excel
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-2 h-8" onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}>
+                {isDetailsExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
+              </Button>
+            </div>
           </CardHeader>
           {isDetailsExpanded && (
             <CardContent className="p-0 border-t border-border/50 animate-in slide-in-from-top-2 duration-200">
@@ -570,14 +608,15 @@ const InformesPage = () => {
                       <TableHead>Beneficiario / Concepto</TableHead>
                       <TableHead>Categoría</TableHead>
                       <TableHead>Módulo</TableHead>
+                      <TableHead>Caja / Pago</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      <TableRow><TableCell colSpan={5} className="h-32 text-center italic">Cargando detalle...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="h-32 text-center italic">Cargando detalle...</TableCell></TableRow>
                     ) : results.length === 0 ? (
-                      <TableRow><TableCell colSpan={5} className="h-32 text-center italic text-muted-foreground">No se encontraron movimientos para los criterios seleccionados.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="h-32 text-center italic text-muted-foreground">No se encontraron movimientos para los criterios seleccionados.</TableCell></TableRow>
                     ) : (
                       results.map((item) => (
                         <TableRow key={item.id} className="hover:bg-secondary/10 transition-colors">
@@ -599,6 +638,12 @@ const InformesPage = () => {
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground italic">
                               {item.origen === 'Pagos Proveedor' ? <Building2 className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3" />}
                               {item.origen}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs whitespace-nowrap">{item.cajaNombre}</span>
+                              <span className="text-[10px] text-muted-foreground">{item.tipoPago}</span>
                             </div>
                           </TableCell>
                           <TableCell className={`text-right font-bold ${item.tipo === 'ingreso' ? 'text-green-500' : 'text-red-500'}`}>
