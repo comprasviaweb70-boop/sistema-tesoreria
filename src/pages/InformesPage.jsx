@@ -93,13 +93,11 @@ const InformesPage = () => {
 
       if (dError) throw dError;
       
-      // 4. Fetch Reserva Movimientos
+      // 4. Fetch Reserva Movimientos (Todos, para calcular saldo histórico real)
       const { data: rData, error: rError } = await supabase
         .from('reserva_movimientos')
         .select('*')
-        .gte('fecha', fechaInicio)
-        .lte('fecha', fechaFin)
-        .order('fecha', { ascending: false });
+        .order('fecha', { ascending: true });
 
       if (rError) throw rError;
 
@@ -166,10 +164,41 @@ const InformesPage = () => {
 
     return filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   }, [movimientos, pagos, searchTerm, categorias, cajas]);
+
+  const reservaBalanceByDate = useMemo(() => {
+    let currentBalance = 0;
+    const bMap = {};
+    // Ensure chronological order for running balance
+    const sortedMovs = [...reservaMovimientos].sort((a, b) => {
+      if (a.fecha !== b.fecha) return new Date(a.fecha) - new Date(b.fecha);
+      return (a.id || '').localeCompare(b.id || '');
+    });
+    
+    sortedMovs.forEach(mov => {
+      const factor = mov.tipo === 'ingreso' ? 1 : -1;
+      currentBalance += (parseFloat(mov.monto_total) || 0) * factor;
+      bMap[mov.fecha] = currentBalance;
+    });
+    
+    // Fill gaps for any date present in diariaData but missing in reserva
+    const allDates = [...new Set([
+      ...diariaData.map(d => d.fecha), 
+      ...Object.keys(bMap)
+    ])].sort();
+    
+    let lastBal = 0;
+    const finalMap = {};
+    allDates.forEach(d => {
+      if (bMap[d] !== undefined) {
+        lastBal = bMap[d];
+      }
+      finalMap[d] = lastBal;
+    });
+
+    return finalMap;
+  }, [reservaMovimientos, diariaData]);
+
   const dailyBalances = useMemo(() => {
-    // Los ajustes de corrección de boletas YA están reflejados en venta_diaria
-    // a través de ventaDiariaSync, por lo que NO se vuelven a aplicar aquí.
-    // Esto evita el doble-conteo en la columna de tarjeta.
     const adjustments = {};
 
     // 2. Agrupar datos de venta_diaria por fecha y caja/turno
@@ -219,46 +248,9 @@ const InformesPage = () => {
       return acc;
     }, {});
 
-    // 3. Agrupar movimientos de RESERVA directos (sin caja_id)
-    const reservaGroups = reservaMovimientos.reduce((acc, curr) => {
-      if (curr.caja_id) return acc; // Saltar los que ya están en venta_diaria
+    const allGroups = { ...perBoxGroups };
 
-      const groupKey = `${curr.fecha}_RESERVA_${curr.turno}`;
-      if (!acc[groupKey]) {
-        acc[groupKey] = {
-          fecha: curr.fecha,
-          caja_id: 'RESERVA',
-          turno: curr.turno,
-          cajero: 'RESERVA',
-          base_efectivo_neta: 0,
-          base_card: 0,
-          edenred: 0,
-          transferencia: 0,
-          credito: 0,
-          pago_facturas_caja: 0,
-          pago_facturas_ctacte: 0,
-          gastos_rrhh_otros: 0,
-          diferencia_caja: 0,
-          cierre_caja: 0,
-          ingreso_reserva: 0,
-          retiro_reserva: 0
-        };
-      }
-
-      const monto = parseFloat(curr.monto_total) || 0;
-      if (curr.tipo === 'egreso') {
-        acc[groupKey].gastos_rrhh_otros += monto;
-      } else {
-        // Ingresos directos a reserva (ej: Giro Cta Cte)
-        acc[groupKey].base_efectivo_neta += monto; // Mostrar como 'efectivo' para simplificar o dejar en 0 si no es venta
-      }
-      
-      return acc;
-    }, {});
-
-    const allGroups = { ...perBoxGroups, ...reservaGroups };
-
-    // 4. Finalizar totales ajustados y agregar filas de TOTAL diario
+    // 3. Finalizar totales ajustados y agregar filas de TOTAL diario
     const rows = Object.values(allGroups).map(entry => {
       const adjKey = `${entry.fecha}_${entry.caja_id}`;
       const adj = adjustments[adjKey] || { cash: 0, card: 0 };
@@ -275,7 +267,7 @@ const InformesPage = () => {
       };
     });
 
-    // 5. Generar filas de TOTAL por fecha
+    // 4. Generar filas de TOTAL por fecha
     const dailyTotals = rows.reduce((acc, curr) => {
       if (!acc[curr.fecha]) {
         acc[curr.fecha] = {
@@ -294,7 +286,8 @@ const InformesPage = () => {
           diferencia_caja: 0,
           cierre_caja: 0,
           ingreso_reserva: 0,
-          retiro_reserva: 0
+          retiro_reserva: 0,
+          saldo_reserva: reservaBalanceByDate[curr.fecha] || 0
         };
       }
       
@@ -329,7 +322,7 @@ const InformesPage = () => {
       if (!a.isTotalLine && b.isTotalLine) return 1;
       return 0;
     });
-  }, [diariaData, reservaMovimientos, movimientos, categorias, cajas, dailySortOrder]);
+  }, [diariaData, reservaBalanceByDate, cajas, dailySortOrder]);
 
 
 
@@ -363,6 +356,7 @@ const InformesPage = () => {
       'Cierre Caja': day.cierre_caja,
       'Ingreso a Reserva': day.ingreso_reserva,
       'Retiro de Reserva': day.retiro_reserva,
+      'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -557,13 +551,14 @@ const InformesPage = () => {
                       <TableHead className="text-center">CIERRE CAJA</TableHead>
                       <TableHead className="text-center">INGRESO A RESERVA</TableHead>
                       <TableHead className="text-center">RETIRO DE RESERVA</TableHead>
+                      <TableHead className="text-center bg-primary/20 text-primary">SALDO RESERVA</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      <TableRow><TableCell colSpan={15} className="h-24 text-center italic">Cargando resúmenes...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={16} className="h-24 text-center italic">Cargando resúmenes...</TableCell></TableRow>
                     ) : dailyBalances.length === 0 ? (
-                      <TableRow><TableCell colSpan={15} className="h-24 text-center italic text-muted-foreground">No hay datos de cierres para este periodo.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={16} className="h-24 text-center italic text-muted-foreground">No hay datos de cierres para este periodo.</TableCell></TableRow>
                     ) : (
                       dailyBalances.map((day) => {
                         const isExpanded = !!expandedDays[day.fecha];
@@ -614,6 +609,9 @@ const InformesPage = () => {
                             <TableCell className={`text-right font-bold ${day.isTotalLine ? 'bg-primary/5' : ''}`}>$ {day.cierre_caja.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-green-500">$ {day.ingreso_reserva.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-red-500">$ {day.retiro_reserva.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right font-bold ${day.isTotalLine ? 'bg-primary/10 text-primary' : ''}`}>
+                              {day.isTotalLine ? `$ ${day.saldo_reserva.toLocaleString('es-CL')}` : ''}
+                            </TableCell>
                           </TableRow>
                         );
                       })
