@@ -369,8 +369,8 @@ const InformesPage = () => {
       'Gastos RRHH Otros': day.gastos_rrhh_otros,
       'Diferencia Caja': day.diferencia_caja,
       'Cierre Caja': day.cierre_caja,
-      'Ingreso a Reserva': day.ingreso_reserva,
-      'Retiro de Reserva': day.retiro_reserva,
+      'Ingreso de Reserva': day.ingreso_reserva,
+      'Retiro a la Reserva': day.retiro_reserva,
       'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
     });
 
@@ -392,8 +392,8 @@ const InformesPage = () => {
           'Gastos RRHH Otros': null,
           'Diferencia Caja': null,
           'Cierre Caja': null,
-          'Ingreso a Reserva': null,
-          'Retiro de Reserva': null,
+          'Ingreso de Reserva': null,
+          'Retiro a la Reserva': null,
           'Saldo Reserva': null,
         });
       }
@@ -595,8 +595,8 @@ const InformesPage = () => {
                       <TableHead className="text-center">GASTOS RRHH OTROS</TableHead>
                       <TableHead className="text-center">DIFERENCIA CAJA</TableHead>
                       <TableHead className="text-center">CIERRE CAJA</TableHead>
-                      <TableHead className="text-center">INGRESO A RESERVA</TableHead>
-                      <TableHead className="text-center">RETIRO DE RESERVA</TableHead>
+                      <TableHead className="text-center">INGRESO DE RESERVA</TableHead>
+                      <TableHead className="text-center">RETIRO A LA RESERVA</TableHead>
                       <TableHead className="text-center bg-primary/20 text-primary">SALDO RESERVA</TableHead>
                     </TableRow>
                   </TableHeader>
