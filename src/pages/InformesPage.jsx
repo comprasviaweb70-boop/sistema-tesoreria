@@ -35,6 +35,7 @@ const InformesPage = () => {
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const [isDailyExpanded, setIsDailyExpanded] = useState(true);
   const [expandedDays, setExpandedDays] = useState({}); // { [fecha]: boolean }
+  const [dailySortOrder, setDailySortOrder] = useState('desc');
 
   const [fechaInicio, setFechaInicio] = useState(() => {
     const d = new Date();
@@ -317,11 +318,18 @@ const InformesPage = () => {
     // Combinar y ordenar
     const finalResult = [...rows, ...Object.values(dailyTotals)];
     return finalResult.sort((a, b) => {
-      if (a.fecha !== b.fecha) return new Date(b.fecha) - new Date(a.fecha);
-      if (a.isTotalLine) return -1; // Total line goes FIRST for each day
-      return 1; // Then the details
+      const timeA = new Date(a.fecha).getTime();
+      const timeB = new Date(b.fecha).getTime();
+      
+      if (timeA !== timeB) {
+        return dailySortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+      }
+      
+      if (a.isTotalLine && !b.isTotalLine) return -1;
+      if (!a.isTotalLine && b.isTotalLine) return 1;
+      return 0;
     });
-  }, [diariaData, reservaMovimientos, movimientos, categorias, cajas]);
+  }, [diariaData, reservaMovimientos, movimientos, categorias, cajas, dailySortOrder]);
 
 
 
@@ -525,7 +533,16 @@ const InformesPage = () => {
                 <Table className="text-[10px] uppercase font-bold text-center">
                   <TableHeader className="bg-secondary/20">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-center">DIA</TableHead>
+                      <TableHead 
+                        className="text-center cursor-pointer hover:bg-secondary/30 transition-colors select-none group"
+                        onClick={() => setDailySortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        title="Click para ordenar cronológicamente"
+                      >
+                        <div className="flex flex-row items-center justify-center gap-1">
+                          DIA
+                          {dailySortOrder === 'desc' ? <ChevronDown className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" /> : <ChevronUp className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />}
+                        </div>
+                      </TableHead>
                       <TableHead className="text-center">CAJERO</TableHead>
                       <TableHead className="text-center">VENTA EFECTIVO</TableHead>
                       <TableHead className="text-center">VENTAS CON TARJETA</TableHead>
