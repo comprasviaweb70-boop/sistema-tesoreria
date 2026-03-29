@@ -343,8 +343,41 @@ const InformesPage = () => {
     const exportData = [];
     let prevDate = null;
 
+    // Group items by date to guarantee Total goes last in the export
+    const dayGroups = {};
     dailyBalances.forEach(day => {
-      if (prevDate !== null && prevDate !== day.fecha) {
+      if (!dayGroups[day.fecha]) dayGroups[day.fecha] = { details: [], total: null };
+      if (day.isTotalLine) dayGroups[day.fecha].total = day;
+      else dayGroups[day.fecha].details.push(day);
+    });
+
+    // We follow the current dailyBalances array order (which handles asc/desc),
+    // we just want unique dates ordered.
+    const sortedDates = [...new Set(dailyBalances.map(d => d.fecha))];
+
+    const serializeRow = (day) => ({
+      'Día': day.isTotalLine ? `TOTAL ${new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL')}` : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
+      'Cajero/Turno': day.cajero + (day.turno ? ` (${day.turno})` : ''),
+      'Venta Efectivo': day.venta_efectivo,
+      'Ventas con Tarjeta': day.redelcom,
+      'Edenred': day.edenred,
+      'Transferencia': day.transferencia,
+      'Crédito': day.credito,
+      'Total Ventas': day.total_ventas,
+      'Pago Facturas Cta Cte': day.pago_facturas_ctacte,
+      'Pago Facturas Caja': day.pago_facturas_caja,
+      'Gastos RRHH Otros': day.gastos_rrhh_otros,
+      'Diferencia Caja': day.diferencia_caja,
+      'Cierre Caja': day.cierre_caja,
+      'Ingreso a Reserva': day.ingreso_reserva,
+      'Retiro de Reserva': day.retiro_reserva,
+      'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
+    });
+
+    sortedDates.forEach(date => {
+      const group = dayGroups[date];
+
+      if (prevDate !== null && prevDate !== date) {
         exportData.push({
           'Día': '-----------------',
           'Cajero/Turno': '-----------------',
@@ -365,26 +398,11 @@ const InformesPage = () => {
         });
       }
 
-      exportData.push({
-        'Día': day.isTotalLine ? `TOTAL ${new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL')}` : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
-        'Cajero/Turno': day.cajero + (day.turno ? ` (${day.turno})` : ''),
-        'Venta Efectivo': day.venta_efectivo,
-        'Ventas con Tarjeta': day.redelcom,
-        'Edenred': day.edenred,
-        'Transferencia': day.transferencia,
-        'Crédito': day.credito,
-        'Total Ventas': day.total_ventas,
-        'Pago Facturas Cta Cte': day.pago_facturas_ctacte,
-        'Pago Facturas Caja': day.pago_facturas_caja,
-        'Gastos RRHH Otros': day.gastos_rrhh_otros,
-        'Diferencia Caja': day.diferencia_caja,
-        'Cierre Caja': day.cierre_caja,
-        'Ingreso a Reserva': day.ingreso_reserva,
-        'Retiro de Reserva': day.retiro_reserva,
-        'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
-      });
+      // First all details, then the total
+      group.details.forEach(day => exportData.push(serializeRow(day)));
+      if (group.total) exportData.push(serializeRow(group.total));
 
-      prevDate = day.fecha;
+      prevDate = date;
     });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
