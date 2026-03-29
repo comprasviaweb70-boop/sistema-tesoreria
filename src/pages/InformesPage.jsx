@@ -335,6 +335,35 @@ const InformesPage = () => {
     return { totalEgresos, totalIngresos, rrhhTotal, count: results.length };
   }, [results]);
 
+  const handleExportDailyExcel = (e) => {
+    e.stopPropagation();
+    if (dailyBalances.length === 0) return;
+
+    const exportData = dailyBalances.map(day => ({
+      'Día': day.isTotalLine ? `TOTAL ${new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL')}` : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
+      'Cajero/Turno': day.cajero + (day.turno ? ` (${day.turno})` : ''),
+      'Venta Efectivo': day.venta_efectivo,
+      'Ventas con Tarjeta': day.redelcom,
+      'Edenred': day.edenred,
+      'Transferencia': day.transferencia,
+      'Crédito': day.credito,
+      'Total Ventas': day.total_ventas,
+      'Pago Facturas Cta Cte': day.pago_facturas_ctacte,
+      'Pago Facturas Caja': day.pago_facturas_caja,
+      'Gastos RRHH Otros': day.gastos_rrhh_otros,
+      'Diferencia Caja': day.diferencia_caja,
+      'Cierre Caja': day.cierre_caja,
+      'Ingreso a Reserva': day.ingreso_reserva,
+      'Retiro de Reserva': day.retiro_reserva,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Resumen_Diario");
+    
+    XLSX.writeFile(workbook, `Resumen_Diario_Consolidado_${fechaInicio}_al_${fechaFin}.xlsx`);
+  };
+
   const handleExportExcel = (e) => {
     e.stopPropagation();
     if (results.length === 0) return;
@@ -475,9 +504,20 @@ const InformesPage = () => {
                 <CardDescription className="text-xs">Suma de cierres de todas las cajas por día</CardDescription>
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="gap-2">
-              {isDailyExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
-            </Button>
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 h-8 border-green-600/30 hover:bg-green-600/10 text-green-600 dark:text-green-400" 
+                onClick={handleExportDailyExcel}
+                disabled={dailyBalances.length === 0}
+              >
+                <Download className="h-4 w-4" /> Excel
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-2 h-8" onClick={() => setIsDailyExpanded(!isDailyExpanded)}>
+                {isDailyExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
+              </Button>
+            </div>
           </CardHeader>
           {isDailyExpanded && (
             <CardContent className="p-0 border-t border-border/50 animate-in slide-in-from-top-2 duration-200">
