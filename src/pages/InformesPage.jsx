@@ -340,24 +340,52 @@ const InformesPage = () => {
     e.stopPropagation();
     if (dailyBalances.length === 0) return;
 
-    const exportData = dailyBalances.map(day => ({
-      'Día': day.isTotalLine ? `TOTAL ${new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL')}` : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
-      'Cajero/Turno': day.cajero + (day.turno ? ` (${day.turno})` : ''),
-      'Venta Efectivo': day.venta_efectivo,
-      'Ventas con Tarjeta': day.redelcom,
-      'Edenred': day.edenred,
-      'Transferencia': day.transferencia,
-      'Crédito': day.credito,
-      'Total Ventas': day.total_ventas,
-      'Pago Facturas Cta Cte': day.pago_facturas_ctacte,
-      'Pago Facturas Caja': day.pago_facturas_caja,
-      'Gastos RRHH Otros': day.gastos_rrhh_otros,
-      'Diferencia Caja': day.diferencia_caja,
-      'Cierre Caja': day.cierre_caja,
-      'Ingreso a Reserva': day.ingreso_reserva,
-      'Retiro de Reserva': day.retiro_reserva,
-      'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
-    }));
+    const exportData = [];
+    let prevDate = null;
+
+    dailyBalances.forEach(day => {
+      if (prevDate !== null && prevDate !== day.fecha) {
+        exportData.push({
+          'Día': '-----------------',
+          'Cajero/Turno': '-----------------',
+          'Venta Efectivo': null,
+          'Ventas con Tarjeta': null,
+          'Edenred': null,
+          'Transferencia': null,
+          'Crédito': null,
+          'Total Ventas': null,
+          'Pago Facturas Cta Cte': null,
+          'Pago Facturas Caja': null,
+          'Gastos RRHH Otros': null,
+          'Diferencia Caja': null,
+          'Cierre Caja': null,
+          'Ingreso a Reserva': null,
+          'Retiro de Reserva': null,
+          'Saldo Reserva': null,
+        });
+      }
+
+      exportData.push({
+        'Día': day.isTotalLine ? `TOTAL ${new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL')}` : new Date(day.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
+        'Cajero/Turno': day.cajero + (day.turno ? ` (${day.turno})` : ''),
+        'Venta Efectivo': day.venta_efectivo,
+        'Ventas con Tarjeta': day.redelcom,
+        'Edenred': day.edenred,
+        'Transferencia': day.transferencia,
+        'Crédito': day.credito,
+        'Total Ventas': day.total_ventas,
+        'Pago Facturas Cta Cte': day.pago_facturas_ctacte,
+        'Pago Facturas Caja': day.pago_facturas_caja,
+        'Gastos RRHH Otros': day.gastos_rrhh_otros,
+        'Diferencia Caja': day.diferencia_caja,
+        'Cierre Caja': day.cierre_caja,
+        'Ingreso a Reserva': day.ingreso_reserva,
+        'Retiro de Reserva': day.retiro_reserva,
+        'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
+      });
+
+      prevDate = day.fecha;
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
