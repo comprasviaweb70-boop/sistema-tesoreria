@@ -223,7 +223,9 @@ const InformesPage = () => {
           diferencia_caja: 0,
           cierre_caja: 0,
           ingreso_reserva: 0,
-          retiro_reserva: 0
+          retiro_reserva: 0,
+          ingreso_directo_reserva: 0,
+          egreso_directo_reserva: 0
         };
       }
       
@@ -248,9 +250,49 @@ const InformesPage = () => {
       return acc;
     }, {});
 
-    const allGroups = { ...perBoxGroups };
+    const relevantReservaMovs = reservaMovimientos.filter(m => m.fecha >= fechaInicio && m.fecha <= fechaFin);
+    
+    // 3. Agrupar movimientos de RESERVA directos (sin caja_id) para no perder el rastro de depósitos u otros retiros
+    const reservaGroups = relevantReservaMovs.reduce((acc, curr) => {
+      if (curr.caja_id) return acc; // Ya están en venta_diaria
 
-    // 3. Finalizar totales ajustados y agregar filas de TOTAL diario
+      const groupKey = `${curr.fecha}_RESERVA DIRECTA_${curr.turno || 'SinTurno'}`;
+      if (!acc[groupKey]) {
+        acc[groupKey] = {
+          fecha: curr.fecha,
+          caja_id: 'RESERVA_DIRECTA',
+          turno: curr.turno || '',
+          cajero: 'RESERVA (Mov. Directo)',
+          base_efectivo_neta: 0,
+          base_card: 0,
+          edenred: 0,
+          transferencia: 0,
+          credito: 0,
+          pago_facturas_caja: 0,
+          pago_facturas_ctacte: 0,
+          gastos_rrhh_otros: 0,
+          diferencia_caja: 0,
+          cierre_caja: 0,
+          ingreso_reserva: 0,
+          retiro_reserva: 0,
+          ingreso_directo_reserva: 0,
+          egreso_directo_reserva: 0
+        };
+      }
+
+      const monto = parseFloat(curr.monto_total) || 0;
+      if (curr.tipo === 'ingreso') {
+        acc[groupKey].ingreso_directo_reserva += monto;
+      } else {
+        acc[groupKey].egreso_directo_reserva += monto;
+      }
+      
+      return acc;
+    }, {});
+
+    const allGroups = { ...perBoxGroups, ...reservaGroups };
+
+    // 4. Finalizar totales ajustados y agregar filas de TOTAL diario
     const rows = Object.values(allGroups).map(entry => {
       const adjKey = `${entry.fecha}_${entry.caja_id}`;
       const adj = adjustments[adjKey] || { cash: 0, card: 0 };
@@ -267,7 +309,7 @@ const InformesPage = () => {
       };
     });
 
-    // 4. Generar filas de TOTAL por fecha
+    // 5. Generar filas de TOTAL por fecha
     const dailyTotals = rows.reduce((acc, curr) => {
       if (!acc[curr.fecha]) {
         acc[curr.fecha] = {
@@ -287,6 +329,8 @@ const InformesPage = () => {
           cierre_caja: 0,
           ingreso_reserva: 0,
           retiro_reserva: 0,
+          ingreso_directo_reserva: 0,
+          egreso_directo_reserva: 0,
           saldo_reserva: reservaBalanceByDate[curr.fecha] || 0
         };
       }
@@ -304,6 +348,8 @@ const InformesPage = () => {
       acc[curr.fecha].cierre_caja += curr.cierre_caja;
       acc[curr.fecha].ingreso_reserva += curr.ingreso_reserva;
       acc[curr.fecha].retiro_reserva += curr.retiro_reserva;
+      acc[curr.fecha].ingreso_directo_reserva += curr.ingreso_directo_reserva;
+      acc[curr.fecha].egreso_directo_reserva += curr.egreso_directo_reserva;
       
       return acc;
     }, {});
@@ -322,7 +368,7 @@ const InformesPage = () => {
       if (!a.isTotalLine && b.isTotalLine) return 1;
       return 0;
     });
-  }, [diariaData, reservaBalanceByDate, cajas, dailySortOrder]);
+  }, [diariaData, reservaMovimientos, fechaInicio, fechaFin, reservaBalanceByDate, cajas, dailySortOrder]);
 
 
 
@@ -371,6 +417,8 @@ const InformesPage = () => {
       'Cierre Caja': day.cierre_caja,
       'Ingreso de Reserva': day.ingreso_reserva,
       'Retiro a la Reserva': day.retiro_reserva,
+      'Ingreso Directo Reserva': day.ingreso_directo_reserva,
+      'Egreso Directo Reserva': day.egreso_directo_reserva,
       'Saldo Reserva': day.isTotalLine ? day.saldo_reserva : '',
     });
 
@@ -394,6 +442,8 @@ const InformesPage = () => {
           'Cierre Caja': null,
           'Ingreso de Reserva': null,
           'Retiro a la Reserva': null,
+          'Ingreso Directo Reserva': null,
+          'Egreso Directo Reserva': null,
           'Saldo Reserva': null,
         });
       }
@@ -597,14 +647,16 @@ const InformesPage = () => {
                       <TableHead className="text-center">CIERRE CAJA</TableHead>
                       <TableHead className="text-center">INGRESO DE RESERVA</TableHead>
                       <TableHead className="text-center">RETIRO A LA RESERVA</TableHead>
+                      <TableHead className="text-center bg-green-500/10 text-green-600">ING. DIRECTO RESERVA</TableHead>
+                      <TableHead className="text-center bg-red-500/10 text-red-600">EGR. DIRECTO RESERVA</TableHead>
                       <TableHead className="text-center bg-primary/20 text-primary">SALDO RESERVA</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      <TableRow><TableCell colSpan={16} className="h-24 text-center italic">Cargando resúmenes...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={18} className="h-24 text-center italic">Cargando resúmenes...</TableCell></TableRow>
                     ) : dailyBalances.length === 0 ? (
-                      <TableRow><TableCell colSpan={16} className="h-24 text-center italic text-muted-foreground">No hay datos de cierres para este periodo.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={18} className="h-24 text-center italic text-muted-foreground">No hay datos de cierres para este periodo.</TableCell></TableRow>
                     ) : (
                       dailyBalances.map((day) => {
                         const isExpanded = !!expandedDays[day.fecha];
@@ -655,6 +707,12 @@ const InformesPage = () => {
                             <TableCell className={`text-right font-bold ${day.isTotalLine ? 'bg-primary/5' : ''}`}>$ {day.cierre_caja.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-green-500">$ {day.ingreso_reserva.toLocaleString('es-CL')}</TableCell>
                             <TableCell className="text-right text-red-500">$ {day.retiro_reserva.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className={`text-right text-green-600 ${day.isTotalLine ? 'font-bold bg-green-500/10' : ''}`}>
+                              {day.ingreso_directo_reserva > 0 ? `$ ${day.ingreso_directo_reserva.toLocaleString('es-CL')}` : '-'}
+                            </TableCell>
+                            <TableCell className={`text-right text-red-600 ${day.isTotalLine ? 'font-bold bg-red-500/10' : ''}`}>
+                              {day.egreso_directo_reserva > 0 ? `$ ${day.egreso_directo_reserva.toLocaleString('es-CL')}` : '-'}
+                            </TableCell>
                             <TableCell className={`text-right font-bold ${day.isTotalLine ? 'bg-primary/10 text-primary' : ''}`}>
                               {day.isTotalLine ? `$ ${day.saldo_reserva.toLocaleString('es-CL')}` : ''}
                             </TableCell>
