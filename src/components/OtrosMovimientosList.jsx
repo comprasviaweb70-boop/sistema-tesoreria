@@ -74,7 +74,7 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
         const medio = inferMedio(movimiento);
         const { data: currentVenta, error: fetchError } = await supabase
           .from('venta_diaria')
-          .select(`id, venta_efectivo, ${medio}`)
+          .select('*')
           .eq('fecha', movimiento.fecha)
           .eq('turno', movimiento.turno)
           .eq('caja_id', movimiento.caja_id)
@@ -95,6 +95,17 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
             updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + monto;
             updatePayload[medio] = (parseFloat(currentVenta[medio]) || 0) - monto;
           }
+
+          // RECALCULATE total_ventas
+          const newVentaEfectivo = updatePayload.venta_efectivo;
+          const newMedioValue = updatePayload[medio];
+          const fields = ['redelcom', 'tarjeta_credito', 'edenred', 'transferencia', 'credito'];
+          const otrasVentas = fields.reduce((acc, field) => {
+            const val = field === medio ? newMedioValue : (currentVenta[field] || 0);
+            return acc + (parseFloat(val) || 0);
+          }, 0);
+          const vuelta = parseFloat(currentVenta.vuelta) || 0;
+          updatePayload.total_ventas = (newVentaEfectivo - vuelta) + otrasVentas;
 
           const { error: vdUpdateError } = await supabase
             .from('venta_diaria')

@@ -118,7 +118,6 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
       (parseFloat(data.gastos_rrhh) || 0) +
       (parseFloat(data.servicios) || 0) +
       (parseFloat(data.gastos) || 0) +
-      (parseFloat(data.correccion_boletas) || 0) +
       (parseFloat(data.otros_egresos) || 0);
     
     const total_egresos = sumEgresosOperativos + entrega_tesoreria;
@@ -960,18 +959,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
                         </TableCell>
                       </TableRow>
 
-                      <TableRow>
-                        <TableCell className="font-medium text-muted-foreground">Corrección de Boletas</TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            value={ventaData.correccion_boletas}
-                            disabled={true}
-                            className="text-right glass-input w-full max-w-[200px] ml-auto bg-secondary/30"
-                            title="Sincronizado desde Otros Movimientos"
-                          />
-                        </TableCell>
-                      </TableRow>
+
 
                       <TableRow>
                         <TableCell className="font-medium text-muted-foreground">Otros Egresos</TableCell>

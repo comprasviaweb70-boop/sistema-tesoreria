@@ -60,7 +60,10 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
     (otrosMovs || []).forEach(m => {
       const monto = parseFloat(m.monto) || 0;
       const catName = m.categorias_movimiento?.nombre?.toLowerCase() || '';
-      const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección');
+      const isCorreccion = 
+        catName.includes('correccion') || 
+        catName.includes('corrección') || 
+        catName.includes('ajuste boletas');
 
       if (isCorreccion) return; 
 

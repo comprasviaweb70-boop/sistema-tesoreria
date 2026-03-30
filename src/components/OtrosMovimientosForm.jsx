@@ -94,12 +94,16 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
   const syncToVentaDiaria = async (monto, currentFormData, isReversal = false) => {
     const selectedCat = categorias.find(c => c.id === currentFormData.categoria_id);
     const catName = selectedCat?.nombre?.toLowerCase() || '';
-    const isCorreccion = catName.startsWith('correccion') || catName.startsWith('corrección') || catName.includes('ajuste boletas');
+    const isCorreccion = 
+      catName.includes('correccion') || 
+      catName.includes('corrección') || 
+      catName.includes('ajuste boletas');
     
     if (isCorreccion) {
+      // Fetch the full record to ensure we can correctly calculate total_ventas
       const { data: currentVenta, error: fetchError } = await supabase
         .from('venta_diaria')
-        .select(`id, venta_efectivo, ${currentFormData.medio_a_corregir}`)
+        .select('*')
         .eq('fecha', currentFormData.fecha)
         .eq('turno', currentFormData.turno)
         .eq('caja_id', globalCajaId)
@@ -112,15 +116,31 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         const sign = isReversal ? -1 : 1;
         const adjustedMonto = monto * sign;
 
+        // Perform the swap
         if (currentFormData.tipo === 'ingreso') {
-          // Débito -> Efectivo (Original: Aumenta efectivo, reduce el otro medio)
+          // Ingreso de Efectivo por Corrección (Tarjeta -> Efectivo)
           updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) + adjustedMonto;
           updatePayload[currentFormData.medio_a_corregir] = (parseFloat(currentVenta[currentFormData.medio_a_corregir]) || 0) - adjustedMonto;
         } else {
-          // Efectivo -> Débito (Original: Reduce efectivo, aumenta el otro medio)
+          // Egreso de Efectivo por Corrección (Efectivo -> Tarjeta)
           updatePayload.venta_efectivo = (parseFloat(currentVenta.venta_efectivo) || 0) - adjustedMonto;
           updatePayload[currentFormData.medio_a_corregir] = (parseFloat(currentVenta[currentFormData.medio_a_corregir]) || 0) + adjustedMonto;
         }
+
+        // RECALCULATE total_ventas to prevent stale column in DB
+        // Total Ventas = (venta_efectivo - vuelta) + sum(otras_tarjetas)
+        const newVentaEfectivo = updatePayload.venta_efectivo;
+        const newMedioValue = updatePayload[currentFormData.medio_a_corregir];
+        
+        // Sum up all payment methods, using the new values where applicable
+        const fields = ['redelcom', 'tarjeta_credito', 'edenred', 'transferencia', 'credito'];
+        const otrasVentas = fields.reduce((acc, field) => {
+          const val = field === currentFormData.medio_a_corregir ? newMedioValue : (currentVenta[field] || 0);
+          return acc + (parseFloat(val) || 0);
+        }, 0);
+        
+        const vuelta = parseFloat(currentVenta.vuelta) || 0;
+        updatePayload.total_ventas = (newVentaEfectivo - vuelta) + otrasVentas;
         
         const { error: updateError } = await supabase
           .from('venta_diaria')
@@ -292,8 +312,11 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
             </div>
 
             {/* Campo condicional para corrección de boletas */}
-            {formData.categoria_id && (categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.startsWith('correccion') || 
-             categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.startsWith('corrección')) && (
+            {formData.categoria_id && (
+             categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.includes('correccion') || 
+             categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.includes('corrección') ||
+             categorias.find(c => c.id === formData.categoria_id)?.nombre?.toLowerCase()?.includes('ajuste boletas')
+            ) && (
               <div className="space-y-2 md:col-span-2 p-3 bg-primary/5 border border-primary/20 rounded-md">
                 <Label className="text-primary font-semibold">Medio de Pago a Corregir</Label>
                 <p className="text-[10px] text-muted-foreground mb-2">
