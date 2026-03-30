@@ -149,10 +149,10 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         
         if (updateError) throw updateError;
       }
-      return; 
     }
 
-    // Para todos los demás movimientos, usamos la utilidad de recalculo robusto
+    // Always run recalculateVentaDiaria at the end to ensure the aggregates (egresos) 
+    // are refreshed and any old correction-related expense values are cleared.
     await recalculateVentaDiaria(supabase, currentFormData.fecha, currentFormData.turno, globalCajaId);
   };
 

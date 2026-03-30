@@ -116,7 +116,8 @@ export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
     const updateData = {
       ...aggregates,
       pago_facturas_caja: sumPagosCaja,
-      pago_facturas_cc: sumPagosCC
+      pago_facturas_cc: sumPagosCC,
+      correccion_boletas: 0 // Explicitly zero out the deprecated/redundant column to maintain DB integrity
     };
 
     debug.updateData = { ...updateData };
