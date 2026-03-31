@@ -5,7 +5,7 @@
  * the totals will be correct.
  */
 export async function recalculateVentaDiaria(supabase, fecha, turno, cajaId) {
-  if (!fecha || !turno || !cajaId || cajaId === 'all') return null;
+  if (!fecha || !turno || !cajaId || cajaId === 'all' || cajaId === 'cuenta_corriente') return null;
 
   const debug = { fecha, turno, cajaId, sources: {} };
   console.log(`[ventaDiariaSync] Recalculating for: fecha=${fecha}, turno=${turno}, cajaId=${cajaId}`);

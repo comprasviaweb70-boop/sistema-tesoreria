@@ -41,7 +41,8 @@ const FlujoCajaPage = () => {
     ventaDiaria: [],
     pagosProveedor: [],
     reservaMovs: [],
-    ajustes: []
+    ajustes: [],
+    otrosMovs: []
   });
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -87,14 +88,16 @@ const FlujoCajaPage = () => {
         supabase.from('venta_diaria').select('*').gte('fecha', startStr).lte('fecha', endStr),
         supabase.from('pagos_proveedor').select('*').gte('fecha_pago', startStr).lte('fecha_pago', endStr),
         supabase.from('reserva_movimientos').select('*').gte('fecha', startStr).lte('fecha', endStr),
-        supabase.from('fjc_saldos_ajuste').select('*').gte('fecha', startStr).lte('fecha', endStr)
+        supabase.from('fjc_saldos_ajuste').select('*').gte('fecha', startStr).lte('fecha', endStr),
+        supabase.from('otros_movimientos').select('*, categorias_movimiento(nombre)').gte('fecha', startStr).lte('fecha', endStr)
       ]);
 
       setHistoryData({
         ventaDiaria: vd.data || [],
         pagosProveedor: pp.data || [],
         reservaMovs: rm.data || [],
-        ajustes: aj.data || []
+        ajustes: aj.data || [],
+        otrosMovs: om.data || []
       });
 
     } catch (err) {
@@ -241,15 +244,43 @@ const FlujoCajaPage = () => {
                 .reduce((acc, v) => acc + (parseFloat(v.diferencia_caja) || 0), 0),
         };
 
+        // 1.1 DATA OTROS MOVIMIENTOS (Bancos)
+        const bankMovs = historyData.otrosMovs.filter(m => m.fecha === dStr && m.caja_id === 'cuenta_corriente');
+        
+        const bankAgg = {
+          ingresos: 0,
+          egresos_prov: 0,
+          egresos_rrhh: 0,
+          egresos_gastos: 0
+        };
+
+        bankMovs.forEach(m => {
+          const monto = parseFloat(m.monto) || 0;
+          const cat = (m.categorias_movimiento?.nombre || '').toLowerCase();
+          
+          if (m.tipo === 'ingreso') {
+            bankAgg.ingresos += monto;
+          } else {
+            if (cat.includes('proveedor')) {
+              bankAgg.egresos_prov += monto;
+            } else if (cat.includes('rrhh') || cat.includes('sueldo') || cat.includes('personal')) {
+              bankAgg.egresos_rrhh += monto;
+            } else {
+              // Por defecto a gastos (servicios, comisiones, etc.)
+              bankAgg.egresos_gastos += monto;
+            }
+          }
+        });
+
         // 2. DATA PROYECTADA (Usa parámetros si no hay real o si es futuro)
         const flow = {
             venta_efectivo: isProjected ? getParam('venta_efectivo') : realData.venta_efectivo,
             abonos_mp: isProjected ? getParam('abonos_mp') : realData.abonos_mp,
-            abonos_bch: isProjected ? getParam('abonos_bch') : realData.abonos_bch,
-            pago_banco: isProjected ? getParam('pagos_proveedor_banco') : realData.pago_banco,
+            abonos_bch: isProjected ? getParam('abonos_bch') : (realData.abonos_bch + bankAgg.ingresos),
+            pago_banco: isProjected ? getParam('pagos_proveedor_banco') : (realData.pago_banco + bankAgg.egresos_prov),
             pago_caja: isProjected ? getParam('pagos_proveedor_caja') : realData.pago_caja,
-            gastos: isProjected ? getParam('servicios_gastos') : realData.gastos,
-            rrhh: isProjected ? getParam('rrhh') : realData.rrhh,
+            gastos: isProjected ? getParam('servicios_gastos') : (realData.gastos + bankAgg.egresos_gastos),
+            rrhh: isProjected ? getParam('rrhh') : (realData.rrhh + bankAgg.egresos_rrhh),
             diferencia: isProjected ? 0 : realData.diferencia,
         };
 

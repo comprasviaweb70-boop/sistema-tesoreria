@@ -12,7 +12,8 @@ const CajaSelector = ({
   disabled = false, 
   className = "",
   showAllOption = false,
-  allOptionLabel = "Todas las cajas"
+  allOptionLabel = "Todas las cajas",
+  showCuentaCorriente = false,
 }) => {
   const [cajas, setCajas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +75,9 @@ const CajaSelector = ({
         <SelectContent>
           {showAllOption && (
             <SelectItem value="all">{allOptionLabel}</SelectItem>
+          )}
+          {showCuentaCorriente && (
+            <SelectItem value="cuenta_corriente">Cuenta Corriente / Bancos</SelectItem>
           )}
           {cajas.map(c => (
             <SelectItem key={c.id} value={c.id}>

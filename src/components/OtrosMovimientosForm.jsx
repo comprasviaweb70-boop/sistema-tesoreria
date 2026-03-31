@@ -92,6 +92,10 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
    * Sincroniza el movimiento con venta_diaria:
    */
   const syncToVentaDiaria = async (monto, currentFormData, isReversal = false) => {
+    if (globalCajaId === 'cuenta_corriente') {
+      console.log('[OtrosMovimientosForm] Saltando sincronización con Venta Diaria: es Cuenta Corriente.');
+      return;
+    }
     const selectedCat = categorias.find(c => c.id === currentFormData.categoria_id);
     const catName = selectedCat?.nombre?.toLowerCase() || '';
     const isCorreccion = 
@@ -294,7 +298,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <CajaSelector value={globalCajaId} onChange={setGlobalCajaId} required />
+            <CajaSelector value={globalCajaId} onChange={setGlobalCajaId} required showCuentaCorriente />
 
             <div className="space-y-2">
               <Label>Categoría</Label>
