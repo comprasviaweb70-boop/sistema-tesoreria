@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   TrendingUp, 
@@ -54,6 +54,39 @@ export default function ReservaPage() {
   const [fechaInicio, setFechaInicio] = useState(getStartOfMonthStr());
   const [fechaFin, setFechaFin] = useState(getTodayStr());
   const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
+  const [initialSaldo, setInitialSaldo] = useState(null);
+  
+  // Cargar saldo inicial desde saldos_diarios (día anterior al filtro)
+  useEffect(() => {
+    if (!fechaInicio) return;
+    const diaAnterior = new Date(fechaInicio);
+    diaAnterior.setDate(diaAnterior.getDate() - 1);
+    const fechaAnterior = diaAnterior.toISOString().split('T')[0];
+    
+    supabase
+      .from('saldos_diarios')
+      .select('*')
+      .eq('fecha', fechaAnterior)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setInitialSaldo({
+            b20k: data.b20k || 0,
+            b10k: data.b10k || 0,
+            b5k: data.b5k || 0,
+            b2k: data.b2k || 0,
+            b1k: data.b1k || 0,
+            m500: data.m500 || 0,
+            m100: data.m100 || 0,
+            m50: data.m50 || 0,
+            m10: data.m10 || 0
+          });
+        } else {
+          setInitialSaldo(null);
+        }
+      })
+      .catch(() => setInitialSaldo(null));
+  }, [fechaInicio]);
   console.log("Movimientos fetched:", movimientos.length, "Loading:", loading);
 
   const handleEdit = (mov) => {
@@ -111,7 +144,8 @@ export default function ReservaPage() {
 
   const { dailyBalances, detailedMovements } = useMemo(() => {
     // 1. Preparar movimientos detallados con saldos parciales
-    let rollingSaldo = {
+    // Usar saldo real desde saldos_diarios si está disponible, sino empezar de 0
+    let rollingSaldo = initialSaldo || {
       b20k: 0, b10k: 0, b5k: 0, b2k: 0, b1k: 0,
       m500: 0, m100: 0, m50: 0, m10: 0
     };
