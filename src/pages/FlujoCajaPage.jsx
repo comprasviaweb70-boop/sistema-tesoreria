@@ -45,8 +45,17 @@ const FlujoCajaPage = () => {
     otrosMovs: []
   });
   
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const saved = localStorage.getItem('fjc_currentMonth');
+    return saved !== null ? parseInt(saved, 10) : new Date().getMonth();
+  });
+  const [currentYear, setCurrentYear] = useState(() => {
+    const saved = localStorage.getItem('fjc_currentYear');
+    return saved !== null ? parseInt(saved, 10) : new Date().getFullYear();
+  });
+
+  useEffect(() => { localStorage.setItem('fjc_currentMonth', currentMonth); }, [currentMonth]);
+  useEffect(() => { localStorage.setItem('fjc_currentYear', currentYear); }, [currentYear]);
 
   const fetchBaseData = async () => {
     setLoading(true);

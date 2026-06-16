@@ -41,9 +41,9 @@ export default function ReservaPage() {
   const [selectedMovimiento, setSelectedMovimiento] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCaja, setFilterCaja] = useState('all');
-  const [filterFecha, setFilterFecha] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('rpg_search') || '');
+  const [filterCaja, setFilterCaja] = useState(() => localStorage.getItem('rpg_filterCaja') || 'all');
+  const [filterFecha, setFilterFecha] = useState(() => localStorage.getItem('rpg_filterFecha') || '');
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const getStartOfMonthStr = () => {
@@ -51,8 +51,8 @@ export default function ReservaPage() {
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
   };
 
-  const [fechaInicio, setFechaInicio] = useState(getStartOfMonthStr());
-  const [fechaFin, setFechaFin] = useState(getTodayStr());
+  const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('rpg_fechaInicio') || getStartOfMonthStr());
+  const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('rpg_fechaFin') || getTodayStr());
   const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
   const [initialSaldo, setInitialSaldo] = useState(null);
   
@@ -69,6 +69,13 @@ export default function ReservaPage() {
     };
     load().catch(() => setInitialSaldo(null));
   }, [fechaInicio]);
+
+  // Persistir filtros en localStorage
+  useEffect(() => { localStorage.setItem('rpg_search', searchTerm); }, [searchTerm]);
+  useEffect(() => { localStorage.setItem('rpg_filterCaja', filterCaja); }, [filterCaja]);
+  useEffect(() => { localStorage.setItem('rpg_filterFecha', filterFecha); }, [filterFecha]);
+  useEffect(() => { localStorage.setItem('rpg_fechaInicio', fechaInicio); }, [fechaInicio]);
+  useEffect(() => { localStorage.setItem('rpg_fechaFin', fechaFin); }, [fechaFin]);
   console.log("Movimientos fetched:", movimientos.length, "Loading:", loading);
 
   const handleEdit = (mov) => {

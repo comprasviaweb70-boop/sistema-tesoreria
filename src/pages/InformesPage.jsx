@@ -38,11 +38,17 @@ const InformesPage = () => {
   const [dailySortOrder, setDailySortOrder] = useState('desc');
 
   const [fechaInicio, setFechaInicio] = useState(() => {
+    const saved = localStorage.getItem('inf_fechaInicio');
+    if (saved) return saved;
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
   });
-  const [fechaFin, setFechaFin] = useState(new Date().toISOString().split('T')[0]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('inf_fechaFin') || new Date().toISOString().split('T')[0]);
+  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('inf_search') || '');
+
+  useEffect(() => { localStorage.setItem('inf_fechaInicio', fechaInicio); }, [fechaInicio]);
+  useEffect(() => { localStorage.setItem('inf_fechaFin', fechaFin); }, [fechaFin]);
+  useEffect(() => { localStorage.setItem('inf_search', searchTerm); }, [searchTerm]);
   const [movimientos, setMovimientos] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [diariaData, setDiariaData] = useState([]);
