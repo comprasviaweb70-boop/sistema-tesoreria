@@ -32,11 +32,17 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
 
   // Filtros
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
-  const [turnoFiltro, setTurnoFiltro] = useState('all-shifts');
-  const [proveedorFiltro, setProveedorFiltro] = useState('all');
-  const [metodoFiltro, setMetodoFiltro] = useState('all');
+  const [fechaDesde, setFechaDesde] = useState(() => localStorage.getItem('spl_fechaDesde') || '');
+  const [fechaHasta, setFechaHasta] = useState(() => localStorage.getItem('spl_fechaHasta') || '');
+  const [turnoFiltro, setTurnoFiltro] = useState(() => localStorage.getItem('spl_turnoFiltro') || 'all-shifts');
+  const [proveedorFiltro, setProveedorFiltro] = useState(() => localStorage.getItem('spl_proveedorFiltro') || 'all');
+  const [metodoFiltro, setMetodoFiltro] = useState(() => localStorage.getItem('spl_metodoFiltro') || 'all');
+
+  useEffect(() => { localStorage.setItem('spl_fechaDesde', fechaDesde); }, [fechaDesde]);
+  useEffect(() => { localStorage.setItem('spl_fechaHasta', fechaHasta); }, [fechaHasta]);
+  useEffect(() => { localStorage.setItem('spl_turnoFiltro', turnoFiltro); }, [turnoFiltro]);
+  useEffect(() => { localStorage.setItem('spl_proveedorFiltro', proveedorFiltro); }, [proveedorFiltro]);
+  useEffect(() => { localStorage.setItem('spl_metodoFiltro', metodoFiltro); }, [metodoFiltro]);
   const [listadoProveedores, setListadoProveedores] = useState([]);
 
   useEffect(() => {

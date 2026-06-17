@@ -26,10 +26,15 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
   const [movimientoToEdit, setMovimientoToEdit] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
-  const [turnoFiltro, setTurnoFiltro] = useState('all-shifts');
-  const [tipoFiltro, setTipoFiltro] = useState('all');
+  const [fechaDesde, setFechaDesde] = useState(() => localStorage.getItem('oml_fechaDesde') || '');
+  const [fechaHasta, setFechaHasta] = useState(() => localStorage.getItem('oml_fechaHasta') || '');
+  const [turnoFiltro, setTurnoFiltro] = useState(() => localStorage.getItem('oml_turnoFiltro') || 'all-shifts');
+  const [tipoFiltro, setTipoFiltro] = useState(() => localStorage.getItem('oml_tipoFiltro') || 'all');
+
+  useEffect(() => { localStorage.setItem('oml_fechaDesde', fechaDesde); }, [fechaDesde]);
+  useEffect(() => { localStorage.setItem('oml_fechaHasta', fechaHasta); }, [fechaHasta]);
+  useEffect(() => { localStorage.setItem('oml_turnoFiltro', turnoFiltro); }, [turnoFiltro]);
+  useEffect(() => { localStorage.setItem('oml_tipoFiltro', tipoFiltro); }, [tipoFiltro]);
 
   useEffect(() => { fetchMovimientos(); }, [refreshTrigger, globalCajaId, fechaDesde, fechaHasta, turnoFiltro, tipoFiltro]);
 
