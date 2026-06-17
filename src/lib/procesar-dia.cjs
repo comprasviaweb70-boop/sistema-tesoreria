@@ -171,17 +171,70 @@ async function loadProveedores() {
 
 function matchProveedor(obs, proveedores) {
   const upper = obs.toUpperCase();
+  
+  // Lista de excepciones: nombres cortos que deben aceptarse tal cual
+  const SHORT_NAMES = ['CCU', 'BAT', 'ICB', 'PF', 'VCT'];
+  
+  // Palabras "comunes" que no son distintivas de un proveedor.
+  // Requerimos que al menos UNA palabra específica (no común) coincida
+  // para evitar falsos positivos como "EMPANADAS OMA" vs "EMPANADAS VIKYS".
+  const COMMON_WORDS = [
+    'EMPANADAS', 'PANADERIA', 'PAGO', 'SUPERMERCADO', 'DISTRIBUIDORA',
+    'COMERCIAL', 'SOCIEDAD', 'LIMITADA', 'CENTRO', 'ESTACION',
+    'SERVICIOS', 'PRODUCTOS', 'ALMACEN', 'MINIMARKET', 'COMERCIALIZADORA',
+    'INDUSTRIA', 'ALIMENTOS', 'GENERAL', 'DEL', 'DE', 'LA', 'EL', 'Y', 'S'
+  ];
+  
+  function wordMatches(word, texto) {
+    // Match exacto
+    if (texto.includes(word)) return true;
+    // Tolerancia de 1 caracter (plurales, abreviaciones)
+    // Ej: "PACEL" matchea "PACE", "EVERCRISP" matchea "EVERCRISPS"
+    if (word.length >= 4) {
+      // Probar sin la última letra
+      if (texto.includes(word.slice(0, -1))) return true;
+      // Probar sin la penúltima letra
+      if (word.length >= 5 && texto.includes(word.slice(0, -2) + word.slice(-1))) return true;
+    }
+    return false;
+  }
+  
+  let best = null;
+  let bestScore = 0;
+  let bestSpecific = 0;
+  
   for (const p of proveedores) {
     const nombre = p.nombre.toUpperCase();
     const words = nombre.split(/\s+/);
-    const sigWords = words.filter(w => w.length > 2);
+    const sigWords = words.filter(w => w.length > 2 || SHORT_NAMES.includes(w));
     if (sigWords.length === 0) continue;
-    const matchCount = sigWords.filter(w => upper.includes(w)).length;
-    if (matchCount >= Math.ceil(sigWords.length / 2)) {
-      return p;
+    
+    // Separar palabras específicas (distintivas) de comunes
+    const specificWords = sigWords.filter(w => !COMMON_WORDS.includes(w));
+    // Si no hay palabras específicas, usar todas las significativas
+    const wordsToMatch = specificWords.length > 0 ? specificWords : sigWords;
+    
+    const matchingAll = sigWords.filter(w => wordMatches(w, upper)).length;
+    const matchingSpecific = wordsToMatch.filter(w => wordMatches(w, upper)).length;
+    
+    // Requerir al menos UNA palabra específica coincidente
+    if (matchingSpecific === 0) continue;
+    
+    const score = matchingAll / sigWords.length;
+    
+    // Umbral: 50% de coincidencia general
+    if (score >= 0.5) {
+      // Preferir el proveedor con MÁS matches específicos (desempate por score)
+      if (matchingSpecific > bestSpecific || 
+          (matchingSpecific === bestSpecific && score > bestScore)) {
+        best = p;
+        bestScore = score;
+        bestSpecific = matchingSpecific;
+      }
     }
   }
-  return null;
+  
+  return best;
 }
 
 function isInterCaja(obs) {
@@ -189,7 +242,10 @@ function isInterCaja(obs) {
 }
 
 function isPreventivo(obs) {
-  return /RETIRO PREVENTIVO|BILLETES? DE|MONEDAS? DE/i.test(obs);
+  // Excluir pagos a personas/proveedores que mencionan denominaciones en la obs
+  // Ej: "PAGO PAN LA ABUELA, 1 BILLETE DE 20.000" NO es preventivo
+  if (/^PAGO\s/i.test(obs.trim())) return false;
+  return /RETIRO PREVENTIVO|BILLETES? DE|MONEDAS? DE|RETIRO EFECTIVO/i.test(obs);
 }
 
 // ===== INSERCIONES =====
@@ -322,20 +378,7 @@ async function insertResults(resultados) {
     console.log('\n--- Paso 2: Ingresos (Retiros de Efectivo) ---');
     for (const r of grupo) {
       for (const ret of r.retiros) {
-        if (isPreventivo(ret.obs)) {
-          // Retiro Preventivo → reserva ingreso, suma al pool
-          const parsed = parseDenominaciones(ret.obs, ret.amount);
-          const denom = parsed || autoDenominacion(ret.amount);
-          
-          await api('POST', 'reserva_movimientos', null, {
-            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-            tipo: 'ingreso', descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
-            monto_total: ret.amount, ...denom
-          });
-          pool.sumarIngreso(denom);
-          console.log(`  ✅ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja})`);
-          
-        } else if (isInterCaja(ret.obs)) {
+        if (isInterCaja(ret.obs)) {
           // Inter-caja OUT → otros_movimientos, no toca reserva
           await api('POST', 'otros_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
@@ -346,7 +389,9 @@ async function insertResults(resultados) {
           console.log(`  🔄 Inter-caja OUT $${ret.amount.toLocaleString('es-CL')} (${r.caja})`);
           
         } else {
-          // Buscar proveedor
+          // PRIORIDAD: Buscar proveedor ANTES de isPreventivo
+          // Regla: "PAGO <nombre>" con match en proveedores → pago_facturas_caja
+          //        "PAGO <nombre propio>" sin match → RRHH Part-Time (cajeras: TAFI, SOFI, etc.)
           const prov = matchProveedor(ret.obs, await loadProveedores());
           if (prov) {
             await api('POST', 'pagos_proveedor', null, {
@@ -355,8 +400,21 @@ async function insertResults(resultados) {
               origen_fondos: 'caja', comprobante_nombre: ret.obs.substring(0,100)
             });
             console.log(`  ✅ Pago proveedor $${ret.amount.toLocaleString('es-CL')} (${prov.nombre} ${r.caja})`);
+          } else if (isPreventivo(ret.obs)) {
+            // Retiro Preventivo → reserva ingreso, suma al pool
+            const parsed = parseDenominaciones(ret.obs, ret.amount);
+            const denom = parsed || autoDenominacion(ret.amount);
+            
+            await api('POST', 'reserva_movimientos', null, {
+              fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+              tipo: 'ingreso', descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+              monto_total: ret.amount, ...denom
+            });
+            pool.sumarIngreso(denom);
+            console.log(`  ✅ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja})`);
           } else {
-            // RRHH Part-Time
+            // RRHH Part-Time: nombre propio no encontrado en proveedores
+            // (cajeras PT como TAFI, SOFI/SOFIA, etc.)
             await api('POST', 'otros_movimientos', null, {
               fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
               tipo: 'egreso', categoria_id: CAT.RRHH_PT,
