@@ -28,7 +28,6 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useReserva } from '@/hooks/useReserva';
-import { DatePicker } from '@/components/DatePicker';
 import { NuevoMovimientoReservaModal } from '@/components/NuevoMovimientoReservaModal';
 import { useToast } from '@/hooks/use-toast';
 
@@ -273,11 +272,27 @@ export default function ReservaPage() {
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Desde</label>
-              <DatePicker value={fechaInicio} onChange={setFechaInicio} className="w-[180px]" />
+              <div className="relative">
+                <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Hasta</label>
-              <DatePicker value={fechaFin} onChange={setFechaFin} className="w-[180px]" />
+              <div className="relative">
+                <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                />
+              </div>
             </div>
             <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
               <Search className="h-4 w-4 mr-2" />

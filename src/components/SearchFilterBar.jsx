@@ -1,18 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { DatePicker } from '@/components/DatePicker';
 import { Search, Calendar, User, Clock, Trash2, AlertCircle, LayoutDashboard } from 'lucide-react';
-import { DatePicker } from '@/components/DatePicker';
 import { Button } from '@/components/ui/button';
-import { DatePicker } from '@/components/DatePicker';
 import { Input } from '@/components/ui/input';
-import { DatePicker } from '@/components/DatePicker';
 import { Label } from '@/components/ui/label';
-import { DatePicker } from '@/components/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatePicker } from '@/components/DatePicker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DatePicker } from '@/components/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/DatePicker';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClosures = {} }) => {
@@ -163,7 +155,13 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
               <Calendar className="h-4 w-4 accent-text" />
               Fecha Desde
             </Label>
-            <DatePicker value={fechaDesde} onChange={setFechaDesde} />
+            <Input
+              id="fechaDesde"
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
+              className="glass-input font-medium [color-scheme:dark] text-foreground/80"
+            />
           </div>
 
           <div className="space-y-2">
@@ -171,7 +169,13 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
               <Calendar className="h-4 w-4 accent-text" />
               Fecha Hasta
             </Label>
-            <DatePicker value={fechaHasta} onChange={setFechaHasta} />
+            <Input
+              id="fechaHasta"
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              className="glass-input font-medium [color-scheme:dark] text-foreground/80"
+            />
           </div>
 
           <div className="space-y-2">

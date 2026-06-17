@@ -1,24 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { DatePicker } from '@/components/DatePicker';
 import { supabase } from '@/lib/customSupabaseClient';
-import { DatePicker } from '@/components/DatePicker';
 import { useToast } from '@/hooks/use-toast';
-import { DatePicker } from '@/components/DatePicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DatePicker } from '@/components/DatePicker';
 import { Button } from '@/components/ui/button';
-import { DatePicker } from '@/components/DatePicker';
 import { Input } from '@/components/ui/input';
-import { DatePicker } from '@/components/DatePicker';
 import { Label } from '@/components/ui/label';
-import { DatePicker } from '@/components/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatePicker } from '@/components/DatePicker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DatePicker } from '@/components/DatePicker';
 import { Pencil, Trash2, Loader2, FileText, ExternalLink, Banknote, CreditCard, Search, Calendar, Clock, Building2, ChevronDown, ChevronUp, RefreshCcw } from 'lucide-react';
-import { DatePicker } from '@/components/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/DatePicker';
 import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 import CajaSelector from '@/components/CajaSelector';
 
@@ -270,13 +259,23 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
               <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
                 <Calendar className="h-3 w-3 text-primary/70" /> Desde
               </Label>
-              <DatePicker value={fechaDesde} onChange={setFechaDesde} className="h-9 w-full" />
+              <Input 
+                type="date" 
+                value={fechaDesde} 
+                onChange={(e) => setFechaDesde(e.target.value)} 
+                className="h-9 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80" 
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs flex items-center gap-1 text-muted-foreground/80 font-medium ml-1">
                 <Calendar className="h-3 w-3 text-primary/70" /> Hasta
               </Label>
-              <DatePicker value={fechaHasta} onChange={setFechaHasta} className="h-9 w-full" />
+              <Input 
+                type="date" 
+                value={fechaHasta} 
+                onChange={(e) => setFechaHasta(e.target.value)} 
+                className="h-9 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80" 
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs flex items-center gap-1 text-muted-foreground">
@@ -550,7 +549,12 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
                 </div>
                 <div className="space-y-1">
                   <Label>Fecha</Label>
-                  <DatePicker value={editingPayment.fecha_pago} onChange={(val) => setEditingPayment({...editingPayment, fecha_pago: val})} className="w-full" />
+                  <Input 
+                    type="date" 
+                    value={editingPayment.fecha_pago} 
+                    onChange={(e) => setEditingPayment({...editingPayment, fecha_pago: e.target.value})}
+                    className="glass-input font-medium [color-scheme:dark] text-foreground/80"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Turno</Label>
