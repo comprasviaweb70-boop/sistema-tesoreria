@@ -1,19 +1,30 @@
 
 import React, { useState, useEffect } from 'react';
+import { DatePicker } from '@/components/DatePicker';
 import { supabase } from '@/lib/customSupabaseClient';
+import { DatePicker } from '@/components/DatePicker';
 import { useToast } from '@/hooks/use-toast';
+import { DatePicker } from '@/components/DatePicker';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/DatePicker';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/DatePicker';
 import { Label } from '@/components/ui/label';
+import { DatePicker } from '@/components/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DatePicker } from '@/components/DatePicker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DatePicker } from '@/components/DatePicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DatePicker } from '@/components/DatePicker';
 import { Trash2, Loader2, TrendingUp, TrendingDown, Calendar, Clock, Pencil } from 'lucide-react';
+import { DatePicker } from '@/components/DatePicker';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import CajaSelector from '@/components/CajaSelector';
 import OtrosMovimientosForm from './OtrosMovimientosForm';
+import { DatePicker } from '@/components/DatePicker';
 import { recalculateVentaDiaria } from '@/utils/ventaDiariaSync';
 
 const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) => {
@@ -185,11 +196,11 @@ const OtrosMovimientosList = ({ refreshTrigger, globalCajaId, setGlobalCajaId })
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Desde</Label>
-            <Input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="h-8 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80"/>
+            <DatePicker value={fechaDesde} onChange={setFechaDesde} className="h-8" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Hasta</Label>
-            <Input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="h-8 text-sm glass-input font-medium [color-scheme:dark] text-foreground/80"/>
+            <DatePicker value={fechaHasta} onChange={setFechaHasta} className="h-8" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3"/>Turno</Label>
