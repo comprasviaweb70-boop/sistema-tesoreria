@@ -235,6 +235,10 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
     }
   };
 
+  const formDataTotal = Object.keys(formData)
+    .filter(k => k.startsWith('b') || k.startsWith('m'))
+    .reduce((acc, key) => acc + (formData[key] || 0), 0);
+
   const handleAjusteSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -242,9 +246,11 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       const tipo = ajusteTipo === 'sobrante' ? 'ingreso' : 'egreso';
       const label = ajusteTipo === 'sobrante' ? 'SOBRANTE' : 'FALTANTE';
       
-      // Distribuir monto en denominaciones automaticamente
+      // Usar denominaciones del formulario en vez de distribuir automaticamente
       const denom = {};
-      let restante = ajusteMonto;
+      ['b20k','b10k','b5k','b2k','b1k','m500','m100','m50','m10'].forEach(k => {
+        if (formData[k] > 0) denom[k] = formData[k];
+      });
       const orden = [
         ['b20k', 20000], ['b10k', 10000], ['b5k', 5000],
         ['b2k', 2000], ['b1k', 1000],
@@ -261,7 +267,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
         caja_id: null,
         tipo,
         descripcion: '[AJUSTE ' + label + '] ' + (formData.descripcion || 'Ajuste manual'),
-        monto_total: ajusteMonto,
+        monto_total: formDataTotal,
         usuario_id: userProfile?.id,
         ...denom
       };
@@ -270,7 +276,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       if (result) {
         setOpen(false);
         if (onSuccess) onSuccess();
-        toast({ title: 'Ajuste registrado', description: label + ' por $' + ajusteMonto.toLocaleString('es-CL') + ' registrado correctamente.' });
+        toast({ title: 'Ajuste registrado', description: label + ' por $' + formDataTotal.toLocaleString('es-CL') + ' registrado correctamente.' });
       }
     } catch (err) {
       console.error('Error en ajuste:', err);
@@ -335,6 +341,9 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase text-muted-foreground">Tipo de Ajuste</Label>
                 <div className="flex gap-1 h-9">
+                  <div className={`text-xl font-bold px-3 py-1 rounded-full bg-white/5 border ${ajusteTipo === 'sobrante' ? 'text-green-400 border-green-500/30' : 'text-red-400 border-red-500/30'}`}>
+                    {ajusteTipo === 'sobrante' ? '+' : '-'} $ {formDataTotal.toLocaleString('es-CL')}
+                  </div>
                   <Button 
                     type="button" 
                     onClick={() => setAjusteTipo('sobrante')} 
@@ -357,19 +366,6 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
 
             <div className="bg-white/5 p-4 rounded-xl border border-white/10 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground">Monto del Ajuste ($)</Label>
-                <Input 
-                  type="text" 
-                  placeholder="0" 
-                  value={ajusteMonto ? ajusteMonto.toLocaleString('es-CL') : ''} 
-                  onChange={e => {
-                    const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
-                    setAjusteMonto(parseInt(raw) || 0);
-                  }}
-                  className="glass-input h-12 text-2xl font-bold text-right" 
-                />
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-xs uppercase text-muted-foreground">Descripción / Razón</Label>
                 <Input 
                   placeholder="Ej: Diferencia detectada en arqueo manual" 
@@ -377,6 +373,60 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
                   onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))} 
                   className="glass-input h-9" 
                 />
+              </div>
+            </div>
+
+            {/* Grilla de Denominaciones */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-primary flex items-center gap-2 border-b border-primary/20 pb-1">
+                  <Calculator className="h-3 w-3" /> BILLETES
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {DENOMINATIONS.billetes.map(d => (
+                    <div key={d.key} className="p-2 rounded-lg bg-primary/5 border border-primary/10">
+                      <Label className="text-[10px] text-primary/70 mb-1 block">{d.label}</Label>
+                      <Input 
+                        type="text" 
+                        placeholder="$ 0" 
+                        value={formData[d.key] > 0 ? formData[d.key].toLocaleString('es-CL') : ''} 
+                        onChange={e => {
+                          const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                          setFormData(prev => ({ ...prev, [d.key]: parseInt(raw) || 0 }));
+                        }}
+                        className="glass-input h-8 text-right font-mono text-sm" 
+                      />
+                      <div className="text-[9px] text-right text-muted-foreground mt-1 min-h-[12px]">
+                        {formData[d.key] > 0 ? `${(formData[d.key] / d.value).toFixed(0)} un.` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-amber-500 flex items-center gap-2 border-b border-amber-500/20 pb-1">
+                  <Calculator className="h-3 w-3" /> MONEDAS
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {DENOMINATIONS.monedas.map(d => (
+                    <div key={d.key} className="p-2 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                      <Label className="text-[10px] text-amber-600/70 mb-1 block">{d.label}</Label>
+                      <Input 
+                        type="text" 
+                        placeholder="$ 0" 
+                        value={formData[d.key] > 0 ? formData[d.key].toLocaleString('es-CL') : ''} 
+                        onChange={e => {
+                          const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                          setFormData(prev => ({ ...prev, [d.key]: parseInt(raw) || 0 }));
+                        }}
+                        className="glass-input h-8 text-right font-mono text-sm" 
+                      />
+                      <div className="text-[9px] text-right text-muted-foreground mt-1 min-h-[12px]">
+                        {formData[d.key] > 0 ? `${(formData[d.key] / d.value).toFixed(0)} un.` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -388,8 +438,8 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
               {ajusteTipo === 'sobrante' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
               <span>
                 {ajusteTipo === 'sobrante' 
-                  ? 'Se agregará $' + ajusteMonto.toLocaleString('es-CL') + ' a la reserva (ingreso).'
-                  : 'Se descontará $' + ajusteMonto.toLocaleString('es-CL') + ' de la reserva (egreso).'}
+                  ? 'Se agregará $' + formDataTotal.toLocaleString('es-CL') + ' a la reserva.'
+                  : 'Se descontará $' + formDataTotal.toLocaleString('es-CL') + ' de la reserva.'}
               </span>
             </div>
 
@@ -397,7 +447,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
               <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="h-10">Cancelar</Button>
               <Button 
                 type="submit" 
-                disabled={loading || ajusteMonto <= 0}
+                disabled={loading || formDataTotal <= 0}
                 className="bg-amber-600 hover:bg-amber-700 text-white min-w-[150px] h-10 shadow-lg"
               >
                 {loading ? 'Procesando...' : <><Save className="h-4 w-4 mr-2" /> Registrar Ajuste</>}
