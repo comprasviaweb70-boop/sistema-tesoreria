@@ -54,21 +54,21 @@ export default function ReservaPage() {
   const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('rpg_fechaInicio') || getStartOfMonthStr());
   const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('rpg_fechaFin') || getTodayStr());
   const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
-  const [initialSaldo, setInitialSaldo] = useState(null);
+  const [saldosDiarios, setSaldosDiarios] = useState([]);
   
   useEffect(() => {
-    if (!fechaInicio) return;
-    const fecha = new Date(fechaInicio);
-    fecha.setDate(fecha.getDate() - 1);
-    const diaAnt = fecha.toISOString().split('T')[0];
+    if (!fechaInicio || !fechaFin) return;
     const load = async () => {
-      const { data } = await supabase.from('saldos_diarios').select('*').eq('fecha', diaAnt).maybeSingle();
-      if (data) {
-        setInitialSaldo({ b20k:data.b20k||0, b10k:data.b10k||0, b5k:data.b5k||0, b2k:data.b2k||0, b1k:data.b1k||0, m500:data.m500||0, m100:data.m100||0, m50:data.m50||0, m10:data.m10||0 });
-      }
+      const { data } = await supabase
+        .from('saldos_diarios')
+        .select('*')
+        .gte('fecha', fechaInicio)
+        .lte('fecha', fechaFin)
+        .order('fecha', { ascending: true });
+      setSaldosDiarios(data || []);
     };
-    load().catch(() => setInitialSaldo(null));
-  }, [fechaInicio]);
+    load();
+  }, [fechaInicio, fechaFin]);
 
   // Persistir filtros en localStorage
   useEffect(() => { localStorage.setItem('rpg_search', searchTerm); }, [searchTerm]);
@@ -132,58 +132,33 @@ export default function ReservaPage() {
   };
 
   const { dailyBalances, detailedMovements } = useMemo(() => {
-    // 1. Preparar movimientos detallados con saldos parciales
-    let rollingSaldo = initialSaldo || {
-      b20k: 0, b10k: 0, b5k: 0, b2k: 0, b1k: 0,
-      m500: 0, m100: 0, m50: 0, m10: 0
-    };
-
-    const detailed = movimientos.map(mov => {
-      const factor = mov.tipo === 'ingreso' ? 1 : -1;
-      rollingSaldo = {
-        b20k: rollingSaldo.b20k + ((mov.b20k || 0) * factor),
-        b10k: rollingSaldo.b10k + ((mov.b10k || 0) * factor),
-        b5k: rollingSaldo.b5k + ((mov.b5k || 0) * factor),
-        b2k: rollingSaldo.b2k + ((mov.b2k || 0) * factor),
-        b1k: rollingSaldo.b1k + ((mov.b1k || 0) * factor),
-        m500: rollingSaldo.m500 + ((mov.m500 || 0) * factor),
-        m100: rollingSaldo.m100 + ((mov.m100 || 0) * factor),
-        m50: rollingSaldo.m50 + ((mov.m50 || 0) * factor),
-        m10: rollingSaldo.m10 + ((mov.m10 || 0) * factor),
-      };
-      
-      const tb = rollingSaldo.b20k + rollingSaldo.b10k + rollingSaldo.b5k + rollingSaldo.b2k + rollingSaldo.b1k;
-      const tm = rollingSaldo.m500 + rollingSaldo.m100 + rollingSaldo.m50 + rollingSaldo.m10;
-
+    // 1. Saldos diarios desde la tabla saldos_diarios (source of truth vía trigger)
+    const balances = (saldosDiarios || []).map(sd => {
+      const tb = (sd.b20k||0)+(sd.b10k||0)+(sd.b5k||0)+(sd.b2k||0)+(sd.b1k||0);
+      const tm = (sd.m500||0)+(sd.m100||0)+(sd.m50||0)+(sd.m10||0);
       return {
-        ...mov,
-        runningSaldo: { ...rollingSaldo },
-        totalGeneral: tb + tm
-      };
-    });
-
-    // 2. Preparar saldos diarios agrupados
-    const groupedByDate = detailed.reduce((acc, mov) => {
-      acc[mov.fecha] = mov; // Tomamos el último estado del día
-      return acc;
-    }, {});
-
-    const balances = Object.keys(groupedByDate).sort().map(date => {
-      const lastMov = groupedByDate[date];
-      const tb = lastMov.runningSaldo.b20k + lastMov.runningSaldo.b10k + lastMov.runningSaldo.b5k + lastMov.runningSaldo.b2k + lastMov.runningSaldo.b1k;
-      const tm = lastMov.runningSaldo.m500 + lastMov.runningSaldo.m100 + lastMov.runningSaldo.m50 + lastMov.runningSaldo.m10;
-      
-      return {
-        fecha: date,
-        saldos: { ...lastMov.runningSaldo },
+        fecha: sd.fecha,
+        saldos: { b20k:sd.b20k||0, b10k:sd.b10k||0, b5k:sd.b5k||0, b2k:sd.b2k||0, b1k:sd.b1k||0, m500:sd.m500||0, m100:sd.m100||0, m50:sd.m50||0, m10:sd.m10||0 },
         totalBilletes: tb,
         totalMonedas: tm,
         totalGeneral: tb + tm
       };
     });
 
+    // 2. Mapa de saldos diarios para mostrar en el detalle
+    const saldoByDate = {};
+    (saldosDiarios || []).forEach(sd => {
+      saldoByDate[sd.fecha] = (sd.b20k||0)+(sd.b10k||0)+(sd.b5k||0)+(sd.b2k||0)+(sd.b1k||0)+(sd.m500||0)+(sd.m100||0)+(sd.m50||0)+(sd.m10||0);
+    });
+
+    // 3. Movimientos detallados con saldo del día desde saldos_diarios
+    const detailed = (movimientos || []).map(mov => ({
+      ...mov,
+      totalGeneral: saldoByDate[mov.fecha] || (mov.monto_total || 0)
+    }));
+
     return { dailyBalances: balances, detailedMovements: detailed };
-  }, [movimientos, initialSaldo]);
+  }, [movimientos, saldosDiarios]);
 
   const filteredMovements = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase();
