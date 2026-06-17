@@ -278,6 +278,7 @@ export default function ReservaPage() {
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Hasta</label>
               <DatePicker value={fechaFin} onChange={setFechaFin} className="w-[180px]" />
+            </div>
             <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
               <Search className="h-4 w-4 mr-2" />
               Filtrar
