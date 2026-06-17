@@ -52,6 +52,9 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [cajaId, setCajaId] = useState('');
+  const [modoAjuste, setModoAjuste] = useState(false);
+  const [ajusteMonto, setAjusteMonto] = useState(0);
+  const [ajusteTipo, setAjusteTipo] = useState('sobrante'); // 'sobrante' | 'faltante'
 
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -232,6 +235,51 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
     }
   };
 
+  const handleAjusteSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const tipo = ajusteTipo === 'sobrante' ? 'ingreso' : 'egreso';
+      const label = ajusteTipo === 'sobrante' ? 'SOBRANTE' : 'FALTANTE';
+      
+      // Distribuir monto en denominaciones automaticamente
+      const denom = {};
+      let restante = ajusteMonto;
+      const orden = [
+        ['b20k', 20000], ['b10k', 10000], ['b5k', 5000],
+        ['b2k', 2000], ['b1k', 1000],
+        ['m500', 500], ['m100', 100], ['m50', 50], ['m10', 10]
+      ];
+      for (const [key, val] of orden) {
+        const cant = Math.floor(restante / val);
+        if (cant > 0) { denom[key] = cant * val; restante -= cant * val; }
+      }
+      
+      const movimiento = {
+        fecha: formData.fecha,
+        turno: 'Mañana',
+        caja_id: null,
+        tipo,
+        descripcion: '[AJUSTE ' + label + '] ' + (formData.descripcion || 'Ajuste manual'),
+        monto_total: ajusteMonto,
+        usuario_id: userProfile?.id,
+        ...denom
+      };
+
+      const result = await addMovimiento(movimiento);
+      if (result) {
+        setOpen(false);
+        if (onSuccess) onSuccess();
+        toast({ title: 'Ajuste registrado', description: label + ' por $' + ajusteMonto.toLocaleString('es-CL') + ' registrado correctamente.' });
+      }
+    } catch (err) {
+      console.error('Error en ajuste:', err);
+      toast({ title: 'Error', description: err.message || 'No se pudo completar el ajuste.', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-4xl glass-card border-white/10 text-foreground overflow-y-auto max-h-[95vh]">
@@ -239,9 +287,9 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
           <div className="flex justify-between items-center">
             <div>
               <DialogTitle className="text-xl flex items-center gap-2">
-                <Calculator className="h-5 w-5 text-primary" /> Nuevo Movimiento de Reserva
+                <Calculator className="h-5 w-5 text-primary" /> {modoAjuste ? 'Ajuste por Diferencia' : 'Nuevo Movimiento de Reserva'}
               </DialogTitle>
-              <DialogDescription>Ingresa los montos por denominación.</DialogDescription>
+              <DialogDescription>{modoAjuste ? 'Registra un sobrante o faltante detectado en la reserva.' : 'Ingresa los montos por denominación.'}</DialogDescription>
             </div>
             {totalCalculado > 0 && (
                <div className={`text-2xl font-bold px-4 py-1 rounded-full bg-white/5 border border-white/10 ${formData.tipo === 'egreso' ? 'text-red-400' : 'text-green-400'}`}>
@@ -251,6 +299,112 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
           </div>
         </DialogHeader>
 
+        <div className="flex gap-2 mb-2">
+          <Button 
+            type="button" 
+            variant={!modoAjuste ? 'default' : 'outline'} 
+            onClick={() => setModoAjuste(false)}
+            className={`flex-1 text-xs h-9 ${!modoAjuste ? 'bg-primary/80' : ''}`}
+          >
+            Traspaso entre Cajas
+          </Button>
+          <Button 
+            type="button" 
+            variant={modoAjuste ? 'default' : 'outline'} 
+            onClick={() => setModoAjuste(true)}
+            className={`flex-1 text-xs h-9 ${modoAjuste ? 'bg-amber-600/80 hover:bg-amber-700' : ''}`}
+          >
+            Ajuste por Diferencia
+          </Button>
+        </div>
+
+        {modoAjuste ? (
+          /* === FORMULARIO SIMPLIFICADO DE AJUSTE === */
+          <form onSubmit={handleAjusteSubmit} className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-xl border border-white/10">
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">Fecha</Label>
+                <Input 
+                  type="date" 
+                  value={formData.fecha} 
+                  onChange={e => setFormData(prev => ({ ...prev, fecha: e.target.value }))} 
+                  className="glass-input h-9 font-medium [color-scheme:dark]" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">Tipo de Ajuste</Label>
+                <div className="flex gap-1 h-9">
+                  <Button 
+                    type="button" 
+                    onClick={() => setAjusteTipo('sobrante')} 
+                    variant={ajusteTipo === 'sobrante' ? 'default' : 'outline'} 
+                    className={`flex-1 text-xs h-full ${ajusteTipo === 'sobrante' ? 'bg-green-600/80 hover:bg-green-700' : ''}`}
+                  >
+                    Sobrante (+)
+                  </Button>
+                  <Button 
+                    type="button" 
+                    onClick={() => setAjusteTipo('faltante')} 
+                    variant={ajusteTipo === 'faltante' ? 'default' : 'outline'} 
+                    className={`flex-1 text-xs h-full ${ajusteTipo === 'faltante' ? 'bg-red-600/80 hover:bg-red-700' : ''}`}
+                  >
+                    Faltante (-)
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/5 p-4 rounded-xl border border-white/10 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">Monto del Ajuste ($)</Label>
+                <Input 
+                  type="text" 
+                  placeholder="0" 
+                  value={ajusteMonto ? ajusteMonto.toLocaleString('es-CL') : ''} 
+                  onChange={e => {
+                    const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                    setAjusteMonto(parseInt(raw) || 0);
+                  }}
+                  className="glass-input h-12 text-2xl font-bold text-right" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">Descripción / Razón</Label>
+                <Input 
+                  placeholder="Ej: Diferencia detectada en arqueo manual" 
+                  value={formData.descripcion} 
+                  onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))} 
+                  className="glass-input h-9" 
+                />
+              </div>
+            </div>
+
+            <div className={`p-3 rounded-lg text-sm flex items-center gap-2 border ${
+              ajusteTipo === 'sobrante' 
+                ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                : 'bg-red-500/10 border-red-500/20 text-red-400'
+            }`}>
+              {ajusteTipo === 'sobrante' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+              <span>
+                {ajusteTipo === 'sobrante' 
+                  ? 'Se agregará $' + ajusteMonto.toLocaleString('es-CL') + ' a la reserva (ingreso).'
+                  : 'Se descontará $' + ajusteMonto.toLocaleString('es-CL') + ' de la reserva (egreso).'}
+              </span>
+            </div>
+
+            <DialogFooter className="pt-2 border-t border-white/5 gap-2">
+              <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="h-10">Cancelar</Button>
+              <Button 
+                type="submit" 
+                disabled={loading || ajusteMonto <= 0}
+                className="bg-amber-600 hover:bg-amber-700 text-white min-w-[150px] h-10 shadow-lg"
+              >
+                {loading ? 'Procesando...' : <><Save className="h-4 w-4 mr-2" /> Registrar Ajuste</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {/* Fila Superior: Datos Generales */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white/5 p-4 rounded-xl border border-white/10">
@@ -434,6 +588,7 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );
