@@ -262,14 +262,35 @@ function isCorreccionBoleta(obs) {
 async function verificarConflictos(resultados) {
   const conflictos = [];
   for (const r of resultados) {
+    let total = 0;
+    let modulos = [];
     try {
-      const u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      const resp = await fetch(u,
-        { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } }
-      );
-      const existentes = await resp.json();
+      // Verificar reserva_movimientos
+      let u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
+      let resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      let existentes = await resp.json();
       if (Array.isArray(existentes) && existentes.length > 0) {
-        conflictos.push({ caja: r.caja, cajaUUID: r.cajaUUID, cantidad: existentes.length });
+        total += existentes.length;
+        modulos.push('reserva(' + existentes.length + ')');
+      }
+      // Verificar pagos_proveedor
+      u = URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
+      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      existentes = await resp.json();
+      if (Array.isArray(existentes) && existentes.length > 0) {
+        total += existentes.length;
+        modulos.push('pagos(' + existentes.length + ')');
+      }
+      // Verificar otros_movimientos
+      u = URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
+      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      existentes = await resp.json();
+      if (Array.isArray(existentes) && existentes.length > 0) {
+        total += existentes.length;
+        modulos.push('otros(' + existentes.length + ')');
+      }
+      if (total > 0) {
+        conflictos.push({ caja: r.caja, cajaUUID: r.cajaUUID, cantidad: total, modulos: modulos.join(', ') });
       }
     } catch (e) {
       console.error('  Error al verificar conflictos para ' + r.caja + ': ' + e.message);
@@ -352,7 +373,7 @@ async function insertResults(resultados) {
   if (conflictos.length > 0) {
     console.log('\n⚠️  CONFLICTOS DETECTADOS (Opción C):');
     for (const c of conflictos) {
-      console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales');
+      console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales (' + c.modulos + ')');
     }
     console.log('   Saltando inserción automática para estas cajas...\n');
     resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID));
