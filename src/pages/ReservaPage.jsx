@@ -183,7 +183,7 @@ export default function ReservaPage() {
     });
 
     return { dailyBalances: balances, detailedMovements: detailed };
-  }, [movimientos]);
+  }, [movimientos, initialSaldo]);
 
   const filteredMovements = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase();
