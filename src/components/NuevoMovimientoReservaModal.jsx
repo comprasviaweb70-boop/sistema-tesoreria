@@ -246,20 +246,11 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
       const tipo = ajusteTipo === 'sobrante' ? 'ingreso' : 'egreso';
       const label = ajusteTipo === 'sobrante' ? 'SOBRANTE' : 'FALTANTE';
       
-      // Usar denominaciones del formulario en vez de distribuir automaticamente
+      // Usar denominaciones del formulario
       const denom = {};
       ['b20k','b10k','b5k','b2k','b1k','m500','m100','m50','m10'].forEach(k => {
         if (formData[k] > 0) denom[k] = formData[k];
       });
-      const orden = [
-        ['b20k', 20000], ['b10k', 10000], ['b5k', 5000],
-        ['b2k', 2000], ['b1k', 1000],
-        ['m500', 500], ['m100', 100], ['m50', 50], ['m10', 10]
-      ];
-      for (const [key, val] of orden) {
-        const cant = Math.floor(restante / val);
-        if (cant > 0) { denom[key] = cant * val; restante -= cant * val; }
-      }
       
       const movimiento = {
         fecha: formData.fecha,
