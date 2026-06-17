@@ -375,14 +375,47 @@ async function insertResults(resultados) {
     for (const c of conflictos) {
       console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales (' + c.modulos + ')');
     }
-    console.log('   Saltando inserción automática para estas cajas...\n');
-    resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID));
+    // Reserva: se salta la caja (se conserva lo manual)
+    console.log('   Las cajas con conflictos en RESERVA serán omitidas...\n');
+    resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID && c.modulos.includes('reserva')));
     if (resultados.length === 0) {
-      console.log('  Todas las cajas tienen conflictos — nada que insertar');
+      console.log('  Todas las cajas tienen conflictos en reserva — nada que insertar');
       return;
     }
   }
   
+  // ==== PISAR DATOS MANUALES (Opción C extendida) ====
+  // Para pagos_proveedor y otros_movimientos: borrar lo manual y dejar los de BSale
+  for (const cajaUUID of resultados.map(r => r.cajaUUID)) {
+    // Pagos proveedor
+    try {
+      const rPago = await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+      });
+      const pagos = await rPago.json();
+      if (Array.isArray(pagos) && pagos.length > 0) {
+        console.log('  ⚠️ Pagos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' registros) — serán reemplazados por los de BSale');
+        await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+        });
+      }
+    } catch (e) { /* ignorar errores de pagos */ }
+
+    // Otros movimientos
+    try {
+      const rOtro = await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+      });
+      const otros = await rOtro.json();
+      if (Array.isArray(otros) && otros.length > 0) {
+        console.log('  ⚠️ Otros movimientos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' registros) — serán reemplazados por los de BSale');
+        await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+        });
+      }
+    } catch (e) { /* ignorar errores de otros */ }
+  }
+
   const pool = new PoolReserva();
   await pool.init(FECHA_ARG);
   
