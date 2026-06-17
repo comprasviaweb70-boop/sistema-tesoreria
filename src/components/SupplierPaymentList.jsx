@@ -587,6 +587,22 @@ const SupplierPaymentList = ({ refreshTrigger, globalCajaId, setGlobalCajaId }) 
                   </Select>
                 </div>
                 <div className="space-y-1 col-span-2">
+                  <Label>Proveedor</Label>
+                  <Select 
+                    value={editingPayment.proveedor_id} 
+                    onValueChange={(val) => setEditingPayment({...editingPayment, proveedor_id: val})}
+                  >
+                    <SelectTrigger className="glass-input">
+                      <SelectValue placeholder="Seleccione proveedor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {listadoProveedores.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 col-span-2">
                   <Label>Caja de Referencia</Label>
                   <CajaSelector 
                     value={editingPayment.caja_id}
