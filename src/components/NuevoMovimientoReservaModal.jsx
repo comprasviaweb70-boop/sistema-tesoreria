@@ -217,6 +217,8 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
               console.error('Error syncing after insert:', syncErr);
             }
           }
+          // Recalcular saldos_diarios para reflejar el cambio
+          try { await supabase.rpc('recalcular_saldos'); } catch (rpcErr) { console.error('Error recalculando saldos:', rpcErr); }
           
           setOpen(false);
           if (onSuccess) onSuccess();
@@ -265,6 +267,8 @@ export function NuevoMovimientoReservaModal({ open, setOpen, onSuccess, movimien
 
       const result = await addMovimiento(movimiento);
       if (result) {
+        // Recalcular todos los saldos_diarios para que reflejen el ajuste
+        try { await supabase.rpc('recalcular_saldos'); } catch (rpcErr) { console.error('Error recalculando saldos:', rpcErr); }
         setOpen(false);
         if (onSuccess) onSuccess();
         toast({ title: 'Ajuste registrado', description: label + ' por $' + formDataTotal.toLocaleString('es-CL') + ' registrado correctamente.' });
