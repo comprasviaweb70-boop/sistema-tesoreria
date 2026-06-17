@@ -1,12 +1,9 @@
-"use client"
-
 import React, { useState, useRef, useEffect } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Button } from '@/components/ui/button'
 import { CalendarIcon } from 'lucide-react'
-import 'react-day-picker/style.css'
 
 export function DatePicker({ value, onChange, className = '' }) {
   const [open, setOpen] = useState(false)
