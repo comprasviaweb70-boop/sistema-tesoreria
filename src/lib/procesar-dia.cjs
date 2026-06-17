@@ -186,23 +186,26 @@ function matchProveedor(obs, proveedores) {
   ];
   
   function wordMatches(word, texto) {
-    // Match exacto
-    if (texto.includes(word)) return true;
-    // Tolerancia de 1 caracter (plurales, abreviaciones)
-    // Ej: "PACEL" matchea "PACE", "EVERCRISP" matchea "EVERCRISPS"
+    // Match exacto con palabra completa (word boundary)
+    // Evita falsos positivos como "MAD" dentro de "MADELEINE" o "COLA" dentro de "COLACION"
+    const escape = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hasWholeWord = new RegExp('\\b' + escape(word) + '\\b', 'i');
+    if (hasWholeWord.test(texto)) return true;
+    // Tolerancia de 1 caracter (plurales, abreviaciones): probar sin la última letra
     if (word.length >= 4) {
-      // Probar sin la última letra
-      if (texto.includes(word.slice(0, -1))) return true;
-      // Probar sin la penúltima letra
-      if (word.length >= 5 && texto.includes(word.slice(0, -2) + word.slice(-1))) return true;
+      const short = word.slice(0, -1);
+      const hasShort = new RegExp('\\b' + escape(short) + '\\b', 'i');
+      if (hasShort.test(texto)) return true;
+    }
+    // Tolerancia de 2 caracteres: probar quitando la penúltima letra
+    if (word.length >= 5) {
+      const mod = word.slice(0, -2) + word.slice(-1);
+      const hasMod = new RegExp('\\b' + escape(mod) + '\\b', 'i');
+      if (hasMod.test(texto)) return true;
     }
     return false;
   }
-  
-  let best = null;
-  let bestScore = 0;
-  let bestSpecific = 0;
-  
+
   for (const p of proveedores) {
     const nombre = p.nombre.toUpperCase();
     const words = nombre.split(/\s+/);
