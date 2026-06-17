@@ -248,7 +248,33 @@ function isPreventivo(obs) {
   return /RETIRO PREVENTIVO|BILLETES? DE|MONEDAS? DE|RETIRO EFECTIVO/i.test(obs);
 }
 
+function isCorreccionBoleta(obs) {
+  // Detecta observaciones que indican corrección de boleta
+  // (boleta mal pasada, efectivo que se registró como débito, etc.)
+  // Estos movimientos NO tocan la reserva, solo ajustan venta_diaria
+  return /MAL\s*(PASADA|REGISTRADA)|ES\s+EFECTIVO|CORREGIR|CORRECCI.O*N/i.test(obs);
+}
+
 // ===== INSERCIONES =====
+async function verificarConflictos(resultados) {
+  const conflictos = [];
+  for (const r of resultados) {
+    try {
+      const u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
+      const resp = await fetch(u,
+        { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } }
+      );
+      const existentes = await resp.json();
+      if (Array.isArray(existentes) && existentes.length > 0) {
+        conflictos.push({ caja: r.caja, cajaUUID: r.cajaUUID, cantidad: existentes.length });
+      }
+    } catch (e) {
+      console.error('  Error al verificar conflictos para ' + r.caja + ': ' + e.message);
+    }
+  }
+  return conflictos;
+}
+
 async function api(method, table, params, body) {
   let url = `${URL}/rest/v1/${table}`;
   if (params) url += '?' + params;
@@ -318,6 +344,21 @@ async function insertResults(resultados) {
   
   console.log('\n========== INSERTANDO DATOS ==========');
   
+  // Opcion C: verificar si ya hay movimientos manuales para evitar duplicados
+  const conflictos = await verificarConflictos(resultados);
+  if (conflictos.length > 0) {
+    console.log('\n⚠️  CONFLICTOS DETECTADOS (Opción C):');
+    for (const c of conflictos) {
+      console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales');
+    }
+    console.log('   Saltando inserción automática para estas cajas...\n');
+    resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID));
+    if (resultados.length === 0) {
+      console.log('  Todas las cajas tienen conflictos — nada que insertar');
+      return;
+    }
+  }
+  
   const pool = new PoolReserva();
   await pool.init(FECHA_ARG);
   
@@ -344,10 +385,19 @@ async function insertResults(resultados) {
           await api('POST', 'otros_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
             tipo: 'ingreso', categoria_id: CAT.TRANSF_INT,
-            descripcion: `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`,
+            descripcion: `${r.caja} - INGRESO N� ${ing.nro} - ${ing.obs}`,
             monto: ing.amount
           });
           console.log(`  🔄 Inter-caja IN $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
+        } else if (isCorreccionBoleta(ing.obs)) {
+          // Corrección de boleta: no toca reserva, ajusta venta_diaria
+          await api('POST', 'otros_movimientos', null, {
+            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+            tipo: 'ingreso', categoria_id: '9e2babac-97b1-45f3-9f0e-a4bea377b2e8',
+            descripcion: `${r.caja} - CORRECCI�N N� ${ing.nro} - ${ing.obs}`,
+            monto: ing.amount
+          });
+          console.log(`  ✅ Corrección boleta $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
         } else {
           // Egreso de Tesoreria → usar pool.distribuir() (NO autoDenominacion)
           const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`);
