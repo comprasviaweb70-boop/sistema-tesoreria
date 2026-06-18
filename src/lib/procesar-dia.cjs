@@ -205,6 +205,10 @@ function matchProveedor(obs, proveedores) {
     }
     return false;
   }
+  
+  let best = null;
+  let bestScore = 0;
+  let bestSpecific = 0;
 
   for (const p of proveedores) {
     const nombre = p.nombre.toUpperCase();
