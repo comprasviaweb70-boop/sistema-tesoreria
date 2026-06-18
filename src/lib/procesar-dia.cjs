@@ -259,7 +259,7 @@ function isCorreccionBoleta(obs) {
   // Detecta observaciones que indican corrección de boleta
   // (boleta mal pasada, efectivo que se registró como débito, etc.)
   // Estos movimientos NO tocan la reserva, solo ajustan venta_diaria
-  return /MAL\s*(PASADA|REGISTRADA)|ES\s+EFECTIVO|CORREGIR|CORRECCI.O*N/i.test(obs);
+  return /MAL\s*(PASADA|REGISTRADA|INGRESADA)|ES\s+(EFECTIVO|DEB|DEBITO)|CORREGIR|CORRECCI.O*N/i.test(obs);
 }
 
 // ===== INSERCIONES =====
@@ -498,6 +498,16 @@ async function insertResults(resultados) {
             monto: ret.amount
           });
           console.log(`  🔄 Inter-caja OUT $${ret.amount.toLocaleString('es-CL')} (${r.caja})`);
+          
+        } else if (isCorreccionBoleta(ret.obs)) {
+          // Corrección de boleta desde Retiros: no toca reserva, ajusta venta_diaria
+          await api('POST', 'otros_movimientos', null, {
+            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+            tipo: 'egreso', categoria_id: 'db4ae4a4-eec3-4d43-bf08-b53e2b7d47dd',
+            descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+            monto: ret.amount
+          });
+          console.log(`  ✅ Corrección boleta (retiro) $${ret.amount.toLocaleString('es-CL')} (${r.caja})`);
           
         } else {
           // PRIORIDAD: Buscar proveedor ANTES de isPreventivo
