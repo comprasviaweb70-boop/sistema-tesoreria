@@ -281,6 +281,20 @@ const FlujoCajaPage = () => {
           }
         });
 
+        // 1.2 RESERVA MOVIMIENTOS (retiros de caja a reserva)
+        const reservMovs = historyData.reservaMovs.filter(m => m.fecha === dStr);
+        let reservaIn = 0, reservaOut = 0;
+        reservMovs.forEach(m => {
+            const monto = parseFloat(m.monto) || 0;
+            if (m.tipo === 'ingreso') reservaIn += monto;
+            else reservaOut += monto;
+        });
+
+        // 1.3 AJUSTES MP (comisiones de Mercado Pago)
+        const ajusteMP = historyData.ajustes
+            .filter(a => a.fecha === dStr && a.campo === 'comision_mp')
+            .reduce((acc, a) => acc + (parseFloat(a.monto) || 0), 0);
+
         // 2. DATA PROYECTADA (Usa parámetros si no hay real o si es futuro)
         const flow = {
             venta_efectivo: isProjected ? getParam('venta_efectivo') : realData.venta_efectivo,
@@ -294,7 +308,7 @@ const FlujoCajaPage = () => {
         };
 
         const totalDia = (flow.venta_efectivo + flow.abonos_mp + flow.abonos_bch) - 
-                        (flow.pago_banco + flow.pago_caja + flow.gastos + flow.rrhh) + flow.diferencia;
+                        (flow.pago_banco + flow.pago_caja + flow.gastos + flow.rrhh) + flow.diferencia - ajusteMP;
 
         const dataEntry = {
             fecha: dStr,
@@ -313,12 +327,21 @@ const FlujoCajaPage = () => {
 
         days.push(dataEntry);
 
-        // Actualizar saldos para el día siguiente (Simulación de flujo)
-        // Nota: En una lógica real, los abonos MP irían a MP, etc. 
-        // Simplificaremos sumando todo al consolidado proporcionalmente por ahora.
-        currentCajas += (flow.venta_efectivo - flow.pago_caja - flow.gastos - flow.rrhh + flow.diferencia);
-        currentMP += flow.abonos_mp;
-        currentBCH += (flow.abonos_bch - flow.pago_banco);
+        // Actualizar saldos para el día siguiente
+        // Separar gastos/rrhh de caja vs banco para asignar a la cuenta correcta
+        const bankGastos = isProjected ? 0 : bankAgg.egresos_gastos;
+        const bankRrhh = isProjected ? 0 : bankAgg.egresos_rrhh;
+        const cajaGastos = flow.gastos - bankGastos;
+        const cajaRrhh = flow.rrhh - bankRrhh;
+
+        // Cajas: venta efectivo - pagos en caja - gastos caja - rrhh caja + diferencia - retiros a reserva
+        currentCajas += (flow.venta_efectivo - flow.pago_caja - cajaGastos - cajaRrhh + flow.diferencia - reservaIn + reservaOut);
+        // Reserva: retiros entran, devoluciones salen
+        currentReserva += (reservaIn - reservaOut);
+        // MP: abonos MP - comisiones MP
+        currentMP += (flow.abonos_mp - ajusteMP);
+        // BCH: abonos banco - pagos proveedor banco - gastos banco - rrhh banco
+        currentBCH += (flow.abonos_bch - flow.pago_banco - bankGastos - bankRrhh);
     }
     return days;
   }, [historyData, params, currentMonth, currentYear]);
