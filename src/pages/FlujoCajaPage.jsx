@@ -325,6 +325,13 @@ const FlujoCajaPage = () => {
 
         const totalDia = (flow.venta_efectivo + flow.abonos_mp + flow.abonos_bch) - 
                         (flow.pago_banco + flow.pago_caja + flow.gastos + flow.rrhh) + flow.diferencia - ajusteMP;
+        // Reserva: usar snapshot de saldos_diarios del día actual si existe
+        const currentReservaSnapshot = getReservaFromSnapshot(dStr);
+        if (currentReservaSnapshot !== null) {
+          currentReserva = currentReservaSnapshot;
+        }
+        // Si no hay snapshot, mantener el último saldo conocido (no recalcular)
+
 
         const dataEntry = {
             fecha: dStr,
@@ -352,12 +359,6 @@ const FlujoCajaPage = () => {
 
         // Cajas: venta efectivo - pagos en caja - gastos caja - rrhh caja + diferencia - retiros a reserva
         currentCajas += (flow.venta_efectivo - flow.pago_caja - cajaGastos - cajaRrhh + flow.diferencia - reservaIn + reservaOut);
-        // Reserva: usar snapshot de saldos_diarios del día actual si existe
-        const currentReservaSnapshot = getReservaFromSnapshot(dStr);
-        if (currentReservaSnapshot !== null) {
-          currentReserva = currentReservaSnapshot;
-        }
-        // Si no hay snapshot, mantener el último saldo conocido (no recalcular)
         // MP: abonos MP - comisiones MP
         currentMP += (flow.abonos_mp - ajusteMP);
         // BCH: abonos banco - pagos proveedor banco - gastos banco - rrhh banco
