@@ -65,7 +65,8 @@ const FlujoCajaPage = () => {
       let finalParams = pData || [];
       
       if (!pData || pData.length === 0) {
-          // Si no hay datos, intentamos sembrar valores por defecto para que la UI no esté vacía
+          // Primera vez: tabla vacía. Sembrar SOLO si la tabla realmente está vacía
+          // y solo insertar los keys que faltan (preservando los existentes si los hay).
           const defaults = [
               { field_key: 'venta_efectivo', label: 'Venta Efectivo', estimado_lun_jue: 0, estimado_vie_dom: 0 },
               { field_key: 'abonos_mp', label: 'Abonos Mercado Pago', estimado_lun_jue: 0, estimado_vie_dom: 0 },
@@ -74,14 +75,18 @@ const FlujoCajaPage = () => {
               { field_key: 'pagos_proveedor_caja', label: 'Pagos Proveedor Caja', estimado_lun_jue: 0, estimado_vie_dom: 0 },
               { field_key: 'servicios_gastos', label: 'Servicios y Gastos', estimado_lun_jue: 0, estimado_vie_dom: 0 },
               { field_key: 'rrhh', label: 'RRHH', estimado_lun_jue: 0, estimado_vie_dom: 0 },
-              { field_key: 'initial_reserva', label: 'Saldo Anterior Reserva', estimado_lun_jue: 1500000, estimado_vie_dom: 1500000 },
-              { field_key: 'initial_cajas', label: 'Saldo Anterior Cajas', estimado_lun_jue: 500000, estimado_vie_dom: 500000 },
-              { field_key: 'initial_mp', label: 'Saldo Anterior Mercado Pago', estimado_lun_jue: 2000000, estimado_vie_dom: 2000000 },
-              { field_key: 'initial_bch', label: 'Saldo Anterior Banco Chile', estimado_lun_jue: 50000, estimado_vie_dom: 50000 }
+              { field_key: 'initial_reserva', label: 'Saldo Inicial Reserva', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'initial_cajas', label: 'Saldo Inicial Cajas', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'initial_mp', label: 'Saldo Inicial Mercado Pago', estimado_lun_jue: 0, estimado_vie_dom: 0 },
+              { field_key: 'initial_bch', label: 'Saldo Inicial Banco Chile', estimado_lun_jue: 0, estimado_vie_dom: 0 }
           ];
           finalParams = defaults;
-          // Opcional: Intentar guardar estos defaults si falla la consulta pero la tabla existe
-          await supabase.from('fjc_parametros').upsert(defaults);
+          // Insertar solo si la tabla está completamente vacía (no upsert destructivo)
+          try {
+              await supabase.from('fjc_parametros').insert(defaults);
+          } catch (e) {
+              console.warn('No se pudieron insertar defaults:', e.message);
+          }
       }
       
       setParams(finalParams);
@@ -499,13 +504,14 @@ const FlujoCajaPage = () => {
                                     {dailyFlow.map((d, i) => (
                                         <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative' : ''}`}>
                                             {i === 0 ? (
-                                                <input 
-                                                    type="number"
-                                                    className="w-full bg-transparent border-none text-right font-extrabold text-primary text-sm focus:ring-0 rounded px-1 -mr-1"
-                                                    defaultValue={Math.round(d.saldos[row.account])}
-                                                    onBlur={(e) => handleInitialChange(row.key, parseFloat(e.target.value) || 0)}
-                                                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowParams(true)}
+                                                    className="w-full text-right font-extrabold text-primary text-sm bg-transparent border-none cursor-pointer hover:bg-primary/10 rounded px-1 -mr-1"
+                                                    title="Click para editar saldos iniciales"
+                                                >
+                                                    {formatCurrency(d.saldos[row.account])}
+                                                </button>
                                             ) : (
                                                 <span className="opacity-90">{formatCurrency(d.saldos[row.account])}</span>
                                             )}
