@@ -195,7 +195,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         const updateObj = {
           fecha: formData.fecha,
           turno: formData.turno,
-          caja_id: globalCajaId,
+          caja_id: globalCajaId === 'cuenta_corriente' ? null : globalCajaId,
           tipo: formData.tipo,
           categoria_id: formData.categoria_id || null,
           descripcion: finalDescripcion || null,
@@ -227,7 +227,7 @@ const OtrosMovimientosForm = ({ onSuccess, globalCajaId, setGlobalCajaId, editDa
         const { error } = await supabase.from('otros_movimientos').insert([{
           fecha: formData.fecha,
           turno: formData.turno,
-          caja_id: globalCajaId,
+          caja_id: globalCajaId === 'cuenta_corriente' ? null : globalCajaId,
           tipo: formData.tipo,
           categoria_id: formData.categoria_id || null,
           descripcion: finalDescripcion || null,

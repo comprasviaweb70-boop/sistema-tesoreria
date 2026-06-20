@@ -93,7 +93,7 @@ const FlujoCajaPage = () => {
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
-      const [vd, pp, rm, aj] = await Promise.all([
+      const [vd, pp, rm, aj, om] = await Promise.all([
         supabase.from('venta_diaria').select('*').gte('fecha', startStr).lte('fecha', endStr),
         supabase.from('pagos_proveedor').select('*').gte('fecha_pago', startStr).lte('fecha_pago', endStr),
         supabase.from('reserva_movimientos').select('*').gte('fecha', startStr).lte('fecha', endStr),
@@ -254,7 +254,7 @@ const FlujoCajaPage = () => {
         };
 
         // 1.1 DATA OTROS MOVIMIENTOS (Bancos)
-        const bankMovs = historyData.otrosMovs.filter(m => m.fecha === dStr && m.caja_id === 'cuenta_corriente');
+        const bankMovs = historyData.otrosMovs.filter(m => m.fecha === dStr && (m.caja_id === 'cuenta_corriente' || m.caja_id === null));
         
         const bankAgg = {
           ingresos: 0,
