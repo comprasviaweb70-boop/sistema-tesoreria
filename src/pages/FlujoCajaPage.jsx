@@ -42,7 +42,8 @@ const FlujoCajaPage = () => {
     pagosProveedor: [],
     reservaMovs: [],
     ajustes: [],
-    otrosMovs: []
+    otrosMovs: [],
+    saldosDiarios: []
   });
   
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -98,12 +99,13 @@ const FlujoCajaPage = () => {
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
-      const [vd, pp, rm, aj, om] = await Promise.all([
+      const [vd, pp, rm, aj, om, sd] = await Promise.all([
         supabase.from('venta_diaria').select('*').gte('fecha', startStr).lte('fecha', endStr),
         supabase.from('pagos_proveedor').select('*').gte('fecha_pago', startStr).lte('fecha_pago', endStr),
         supabase.from('reserva_movimientos').select('*').gte('fecha', startStr).lte('fecha', endStr),
         supabase.from('fjc_saldos_ajuste').select('*').gte('fecha', startStr).lte('fecha', endStr),
-        supabase.from('otros_movimientos').select('*, categorias_movimiento(nombre)').gte('fecha', startStr).lte('fecha', endStr)
+        supabase.from('otros_movimientos').select('*, categorias_movimiento(nombre)').gte('fecha', startStr).lte('fecha', endStr),
+        supabase.from('saldos_diarios').select('*').gte('fecha', startStr).lte('fecha', endStr)
       ]);
 
       setHistoryData({
@@ -111,7 +113,8 @@ const FlujoCajaPage = () => {
         pagosProveedor: pp.data || [],
         reservaMovs: rm.data || [],
         ajustes: aj.data || [],
-        otrosMovs: om.data || []
+        otrosMovs: om.data || [],
+        saldosDiarios: sd.data || []
       });
 
     } catch (err) {
@@ -210,6 +213,14 @@ const FlujoCajaPage = () => {
     // Acumuladores para el saldo anterior inicial del mes
     const getInitial = (key) => params.find(p => p.field_key === key)?.estimado_lun_jue || 0;
 
+    // Helper para calcular saldo de reserva desde saldos_diarios
+    const getReservaFromSnapshot = (fecha) => {
+      const saldo = historyData.saldosDiarios.find(s => s.fecha === fecha);
+      if (!saldo) return null;
+      return saldo.b20k + saldo.b10k + saldo.b5k + saldo.b2k + saldo.b1k + 
+             saldo.m500 + saldo.m100 + saldo.m50 + saldo.m10;
+    };
+
     let currentReserva = getInitial('initial_reserva');
     let currentCajas = getInitial('initial_cajas');
     let currentMP = getInitial('initial_mp');
@@ -290,7 +301,7 @@ const FlujoCajaPage = () => {
         const reservMovs = historyData.reservaMovs.filter(m => m.fecha === dStr);
         let reservaIn = 0, reservaOut = 0;
         reservMovs.forEach(m => {
-            const monto = parseFloat(m.monto) || 0;
+            const monto = parseFloat(m.monto_total) || 0;
             if (m.tipo === 'ingreso') reservaIn += monto;
             else reservaOut += monto;
         });
@@ -341,8 +352,17 @@ const FlujoCajaPage = () => {
 
         // Cajas: venta efectivo - pagos en caja - gastos caja - rrhh caja + diferencia - retiros a reserva
         currentCajas += (flow.venta_efectivo - flow.pago_caja - cajaGastos - cajaRrhh + flow.diferencia - reservaIn + reservaOut);
-        // Reserva: retiros entran, devoluciones salen
-        currentReserva += (reservaIn - reservaOut);
+        // Reserva: usar snapshot de saldos_diarios si existe, sino calcular acumulando
+        const nextDate = new Date(d);
+        nextDate.setDate(d.getDate() + 1);
+        const nextStr = nextDate.toISOString().split('T')[0];
+        const nextReservaSnapshot = getReservaFromSnapshot(nextStr);
+        if (nextReservaSnapshot !== null) {
+          currentReserva = nextReservaSnapshot;
+        } else {
+          // Fallback: calcular acumulando (para días proyectados o sin snapshot)
+          currentReserva += (reservaIn - reservaOut);
+        }
         // MP: abonos MP - comisiones MP
         currentMP += (flow.abonos_mp - ajusteMP);
         // BCH: abonos banco - pagos proveedor banco - gastos banco - rrhh banco
