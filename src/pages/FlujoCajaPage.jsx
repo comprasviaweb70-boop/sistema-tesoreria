@@ -84,8 +84,21 @@ const FlujoCajaPage = () => {
           finalParams = defaults;
           // Insertar solo si la tabla está completamente vacía (no upsert destructivo)
           try {
-              await supabase.from('fjc_parametros').insert(defaults);
+              const { error: insertError } = await supabase.from('fjc_parametros').insert(defaults);
+              if (insertError) {
+                  toast({
+                    title: "Advertencia: Parámetros no inicializados",
+                    description: "No se pudieron guardar los parámetros por defecto. Los valores se mostrarán en $0 hasta que se actualicen manualmente.",
+                    variant: "destructive"
+                  });
+                  console.warn('No se pudieron insertar defaults:', insertError.message);
+              }
           } catch (e) {
+              toast({
+                title: "Error al inicializar parámetros",
+                description: "Ocurrió un error al crear los parámetros por defecto.",
+                variant: "destructive"
+              });
               console.warn('No se pudieron insertar defaults:', e.message);
           }
       }
@@ -496,7 +509,7 @@ const FlujoCajaPage = () => {
                                   </div>
                                 </th>
                                 {dailyFlow.map(d => (
-                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] border-b-2 border-primary/30 transition-all duration-300 ${d.fecha === today ? 'bg-primary/30' : d.isWeekend ? 'bg-primary/10' : ''}`}>
+                                    <th key={d.fecha} className={`p-3 text-center border-r border-border/50 min-w-[120px] border-b-2 border-primary/30 transition-all duration-300 ${d.fecha === today ? 'bg-primary/30' : d.isProjected ? 'bg-blue-500/15' : d.isWeekend ? 'bg-primary/10' : ''}`}>
                                         <div className="font-dm-sans font-bold text-sm text-foreground">{new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
                                         <div className={`text-[10px] uppercase font-mono mt-1 ${d.fecha === today ? 'text-primary font-bold sc-highlight' : 'opacity-60'}`}>
                                           {new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short' })}
@@ -518,7 +531,7 @@ const FlujoCajaPage = () => {
                                       {row.label}
                                     </td>
                                     {dailyFlow.map((d, i) => (
-                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative' : ''}`}>
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/10 relative' : d.isProjected ? 'bg-blue-500/10' : ''}`}>
                                             {i === 0 ? (
                                                 <button
                                                     type="button"
@@ -546,7 +559,7 @@ const FlujoCajaPage = () => {
                                 <tr key={row.key} className="border-b border-border/30 transition-colors hover:bg-white/5">
                                     <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">{row.label}</td>
                                     {dailyFlow.map(d => (
-                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : d.isProjected ? 'bg-blue-500/10' : ''} ${d.isProjected ? 'text-muted-foreground italic' : ''}`}>
                                             {formatCurrency(d.flow[row.key])}
                                         </td>
                                     ))}
@@ -564,7 +577,7 @@ const FlujoCajaPage = () => {
                                 <tr key={row.key} className="border-b border-border/30 transition-colors hover:bg-white/5">
                                     <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10">{row.label}</td>
                                     {dailyFlow.map(d => (
-                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
+                                        <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : d.isProjected ? 'bg-blue-500/10' : ''} ${d.isProjected ? 'text-muted-foreground italic' : 'text-red-400/80'}`}>
                                             {formatCurrency(d.flow[row.key])}
                                         </td>
                                     ))}
@@ -574,7 +587,7 @@ const FlujoCajaPage = () => {
                             <tr className="border-b border-border/50 transition-colors hover:bg-white/5">
                                 <td className="p-3 border-r border-border/50 sticky left-0 bg-background/95 backdrop-blur-sm z-10 text-amber-400 font-semibold">Diferencia de Caja</td>
                                 {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : ''} ${d.isProjected ? 'text-muted-foreground italic' : (d.flow.diferencia < 0 ? 'text-red-400' : 'text-green-400')}`}>
+                                    <td key={d.fecha} className={`p-3 text-right border-r border-border/50 pr-4 ${d.fecha === today ? 'bg-primary/20 font-bold' : d.isProjected ? 'bg-blue-500/10' : ''} ${d.isProjected ? 'text-muted-foreground italic' : (d.flow.diferencia < 0 ? 'text-red-400' : 'text-green-400')}`}>
                                         {formatCurrency(d.flow.diferencia)}
                                     </td>
                                 ))}
@@ -584,7 +597,7 @@ const FlujoCajaPage = () => {
                              <tr className="bg-primary/30 font-extrabold border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.2)]">
                                 <td className="p-5 border-r border-border/50 sticky left-0 bg-primary/40 backdrop-blur-md z-30 text-sm tracking-wider">LIBRE DISPONIBILIDAD (Final)</td>
                                 {dailyFlow.map(d => (
-                                    <td key={d.fecha} className={`p-5 text-right border-r border-border/50 pr-4 text-primary text-base underline decoration-2 underline-offset-4 ${d.fecha === today ? 'bg-primary/50' : ''}`}>
+                                    <td key={d.fecha} className={`p-5 text-right border-r border-border/50 pr-4 text-primary text-base underline decoration-2 underline-offset-4 ${d.fecha === today ? 'bg-primary/50' : d.isProjected ? 'bg-blue-500/20' : ''}`}>
                                       {formatCurrency(d.saldos.consolidado + d.totalDia)}
                                     </td>
                                 ))}
