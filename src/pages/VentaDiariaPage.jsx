@@ -113,15 +113,12 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
     const subtotal_ingresos = traspaso_recibido + (parseFloat(data.ingresos_efectivo) || 0);
 
     // 4. Egresos (Agrupados - Incluye entrega a tesorería)
+    // retiros_efectivo ya incluye: pago_facturas_caja + traspaso_tesoreria_egreso + gastos_rrhh + servicios + gastos + otros_egresos
+    // (calculado así en recalcular-venta.cjs línea 94)
     const sumEgresosOperativos = 
-      (parseFloat(data.pago_facturas_caja) || 0) +
-      (parseFloat(data.retiros_efectivo) || 0) +
-      (parseFloat(data.gastos_rrhh) || 0) +
-      (parseFloat(data.servicios) || 0) +
-      (parseFloat(data.gastos) || 0) +
-      (parseFloat(data.otros_egresos) || 0);
+      (parseFloat(data.retiros_efectivo) || 0);
     
-    const total_egresos = sumEgresosOperativos + entrega_tesoreria;
+    const total_egresos = sumEgresosOperativos;
 
     // Total Efectivo Teórico (Lo que debería haber en caja físicamente)
     const cierre_caja_sistema = 
