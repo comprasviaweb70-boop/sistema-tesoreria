@@ -263,49 +263,6 @@ function isCorreccionBoleta(obs) {
 }
 
 // ===== INSERCIONES =====
-async function verificarConflictos(resultados) {
-  const conflictos = [];
-  for (const r of resultados) {
-    let total = 0;
-    let modulos = [];
-    try {
-      // Verificar reserva_movimientos — solo cuentan registros manuales (sin "Nº" en descripcion)
-      let u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id,descripcion';
-      let resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
-      let existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        const manuales = existentes.filter(e => !e.descripcion || (!e.descripcion.includes('INGRESO Nº') && !e.descripcion.includes('RETIRO Nº')));
-        if (manuales.length > 0) {
-          total += manuales.length;
-          modulos.push('reserva(' + manuales.length + ')');
-        }
-      }
-      // Verificar pagos_proveedor
-      u = URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
-      existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('pagos(' + existentes.length + ')');
-      }
-      // Verificar otros_movimientos
-      u = URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
-      existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('otros(' + existentes.length + ')');
-      }
-      if (total > 0) {
-        conflictos.push({ caja: r.caja, cajaUUID: r.cajaUUID, cantidad: total, modulos: modulos.join(', ') });
-      }
-    } catch (e) {
-      console.error('  Error al verificar conflictos para ' + r.caja + ': ' + e.message);
-    }
-  }
-  return conflictos;
-}
-
 async function api(method, table, params, body) {
   let url = `${URL}/rest/v1/${table}`;
   if (params) url += '?' + params;
@@ -369,18 +326,6 @@ async function processDay(page) {
   return resultados;
 }
 
-// ===== VERIFICAR DUPLICADOS EN RESERVA =====
-async function yaExisteEnReserva(cajaUUID, turno, tipo, monto, descripcion) {
-  try {
-    const u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID + '&turno=eq.' + turno + '&tipo=eq.' + tipo + '&monto_total=eq.' + monto + '&descripcion=eq.' + encodeURIComponent(descripcion) + '&select=id&limit=1';
-    const resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
-    const existentes = await resp.json();
-    return Array.isArray(existentes) && existentes.length > 0;
-  } catch (e) {
-    console.error('  ⚠️ Error al verificar duplicado: ' + e.message);
-    return false;
-  }
-}
 
 // ===== INSERTAR DATOS =====
 async function insertResults(resultados) {
@@ -388,35 +333,22 @@ async function insertResults(resultados) {
   
   console.log('\n========== INSERTANDO DATOS ==========');
   
-  // Opcion C: verificar si ya hay movimientos manuales para evitar duplicados
-  const conflictos = await verificarConflictos(resultados);
-  // Conjunto que indica qué cajas tienen movimientos manuales en reserva
-  let cajasConReservaConflict = new Set();
-  if (conflictos.length > 0) {
-    console.log('\n⚠️  CONFLICTOS DETECTADOS (Opción C):');
-    for (const c of conflictos) {
-      console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales (' + c.modulos + ')');
-    }
-    // Identificar cajas con conflicto de reserva y omitir solo la inserción en reserva_movimientos
-    cajasConReservaConflict = new Set(
-      conflictos
-        .filter(c => c.modulos.includes('reserva'))
-        .map(c => c.cajaUUID)
-    );
-    if (cajasConReservaConflict.size > 0) {
-      console.log('   Las siguientes cajas tienen conflicto en RESERVA y se omitirá la inserción en reserva_movimientos:');
-      for (const c of conflictos.filter(c => c.modulos.includes('reserva'))) {
-        console.log(`   - ${c.caja}`);
-      }
-      console.log('');
-    }
-    // No filtramos resultados; procesamos otras inserciones (pagos, otros) normalmente.
-
-  }
-  
-  // ==== PISAR DATOS MANUALES (Opción C extendida) ====
-  // Para pagos_proveedor y otros_movimientos: borrar lo manual y dejar los de BSale
+  // ==== PISAR DATOS — BSale reemplaza todo en las 3 tablas ====
   for (const cajaUUID of resultados.map(r => r.cajaUUID)) {
+    // Reserva movimientos
+    try {
+      const rRes = await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+      });
+      const reservas = await rRes.json();
+      if (Array.isArray(reservas) && reservas.length > 0) {
+        console.log('  ⚠️ Reserva ' + cajaUUID.substring(0,8) + ' (' + reservas.length + ' reg) — reemplazados por BSale');
+        await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+        });
+      }
+    } catch (e) { /* ignorar */ }
+
     // Pagos proveedor
     try {
       const rPago = await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
@@ -424,12 +356,12 @@ async function insertResults(resultados) {
       });
       const pagos = await rPago.json();
       if (Array.isArray(pagos) && pagos.length > 0) {
-        console.log('  ⚠️ Pagos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' registros) — serán reemplazados por los de BSale');
+        console.log('  ⚠️ Pagos ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
           method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
-    } catch (e) { /* ignorar errores de pagos */ }
+    } catch (e) { /* ignorar */ }
 
     // Otros movimientos
     try {
@@ -438,12 +370,12 @@ async function insertResults(resultados) {
       });
       const otros = await rOtro.json();
       if (Array.isArray(otros) && otros.length > 0) {
-        console.log('  ⚠️ Otros movimientos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' registros) — serán reemplazados por los de BSale');
+        console.log('  ⚠️ Otros ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
           method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
-    } catch (e) { /* ignorar errores de otros */ }
+    } catch (e) { /* ignorar */ }
   }
 
   const pool = new PoolReserva();
@@ -501,19 +433,7 @@ async function insertResults(resultados) {
           }
           
           const descEgreso = `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`;
-          const yaExiste = await yaExisteEnReserva(r.cajaUUID, r.turno, 'egreso', ing.amount, descEgreso);
-          if (yaExiste) {
-            console.log(`  ⏭️ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja}) — ya existe, se omite`);
-            if (!cajasConReservaConflict.has(r.cajaUUID)) {
-              pool.restarEgreso(denom);
-            }
-            continue;
-          }
-          if (cajasConReservaConflict.has(r.cajaUUID)) {
-            console.log(`  ⏭️ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja}) — omitido, caja con conflicto manual`);
-            continue;
-          }
-          const r1 = await api('POST', 'reserva_movimientos', null, {
+          await api('POST', 'reserva_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
             tipo: 'egreso', descripcion: descEgreso,
             monto_total: ing.amount, ...denom
@@ -566,18 +486,6 @@ async function insertResults(resultados) {
             const denom = parsed || autoDenominacion(ret.amount);
             
             const descIngreso = `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`;
-            const yaExiste = await yaExisteEnReserva(r.cajaUUID, r.turno, 'ingreso', ret.amount, descIngreso);
-            if (yaExiste) {
-              console.log(`  ⏭️ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja}) — ya existe, se omite`);
-              if (!cajasConReservaConflict.has(r.cajaUUID)) {
-                pool.sumarIngreso(denom);
-              }
-              continue;
-            }
-            if (cajasConReservaConflict.has(r.cajaUUID)) {
-              console.log(`  ⏭️ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja}) — omitido, caja con conflicto manual`);
-              continue;
-            }
             await api('POST', 'reserva_movimientos', null, {
               fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
               tipo: 'ingreso', descripcion: descIngreso,
