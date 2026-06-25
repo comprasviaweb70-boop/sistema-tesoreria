@@ -115,6 +115,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
     // 4. Egresos (Agrupados - Incluye entrega a tesorería)
     const sumEgresosOperativos = 
       (parseFloat(data.pago_facturas_caja) || 0) +
+      (parseFloat(data.retiros_efectivo) || 0) +
       (parseFloat(data.gastos_rrhh) || 0) +
       (parseFloat(data.servicios) || 0) +
       (parseFloat(data.gastos) || 0) +

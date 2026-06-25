@@ -269,17 +269,20 @@ async function verificarConflictos(resultados) {
     let total = 0;
     let modulos = [];
     try {
-      // Verificar reserva_movimientos
-      let u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      let resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      // Verificar reserva_movimientos — solo cuentan registros manuales (sin "Nº" en descripcion)
+      let u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id,descripcion';
+      let resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
       let existentes = await resp.json();
       if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('reserva(' + existentes.length + ')');
+        const manuales = existentes.filter(e => !e.descripcion || (!e.descripcion.includes('INGRESO Nº') && !e.descripcion.includes('RETIRO Nº')));
+        if (manuales.length > 0) {
+          total += manuales.length;
+          modulos.push('reserva(' + manuales.length + ')');
+        }
       }
       // Verificar pagos_proveedor
       u = URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
       existentes = await resp.json();
       if (Array.isArray(existentes) && existentes.length > 0) {
         total += existentes.length;
@@ -287,7 +290,7 @@ async function verificarConflictos(resultados) {
       }
       // Verificar otros_movimientos
       u = URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
+      resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
       existentes = await resp.json();
       if (Array.isArray(existentes) && existentes.length > 0) {
         total += existentes.length;
@@ -366,6 +369,19 @@ async function processDay(page) {
   return resultados;
 }
 
+// ===== VERIFICAR DUPLICADOS EN RESERVA =====
+async function yaExisteEnReserva(cajaUUID, turno, tipo, monto, descripcion) {
+  try {
+    const u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID + '&turno=eq.' + turno + '&tipo=eq.' + tipo + '&monto_total=eq.' + monto + '&descripcion=eq.' + encodeURIComponent(descripcion) + '&select=id&limit=1';
+    const resp = await fetch(u, { headers: { apikey: *** Authorization: *** ' + KEY } });
+    const existentes = await resp.json();
+    return Array.isArray(existentes) && existentes.length > 0;
+  } catch (e) {
+    console.error('  ⚠️ Error al verificar duplicado: ' + e.message);
+    return false;
+  }
+}
+
 // ===== INSERTAR DATOS =====
 async function insertResults(resultados) {
   if (resultados.length === 0) { console.log('  Sin resultados que insertar'); return; }
@@ -374,18 +390,28 @@ async function insertResults(resultados) {
   
   // Opcion C: verificar si ya hay movimientos manuales para evitar duplicados
   const conflictos = await verificarConflictos(resultados);
+  // Conjunto que indica qué cajas tienen movimientos manuales en reserva
+  let cajasConReservaConflict = new Set();
   if (conflictos.length > 0) {
     console.log('\n⚠️  CONFLICTOS DETECTADOS (Opción C):');
     for (const c of conflictos) {
       console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales (' + c.modulos + ')');
     }
-    // Reserva: se salta la caja (se conserva lo manual)
-    console.log('   Las cajas con conflictos en RESERVA serán omitidas...\n');
-    resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID && c.modulos.includes('reserva')));
-    if (resultados.length === 0) {
-      console.log('  Todas las cajas tienen conflictos en reserva — nada que insertar');
-      return;
+    // Identificar cajas con conflicto de reserva y omitir solo la inserción en reserva_movimientos
+    cajasConReservaConflict = new Set(
+      conflictos
+        .filter(c => c.modulos.includes('reserva'))
+        .map(c => c.cajaUUID)
+    );
+    if (cajasConReservaConflict.size > 0) {
+      console.log('   Las siguientes cajas tienen conflicto en RESERVA y se omitirá la inserción en reserva_movimientos:');
+      for (const c of conflictos.filter(c => c.modulos.includes('reserva'))) {
+        console.log(`   - ${c.caja}`);
+      }
+      console.log('');
     }
+    // No filtramos resultados; procesamos otras inserciones (pagos, otros) normalmente.
+
   }
   
   // ==== PISAR DATOS MANUALES (Opción C extendida) ====
@@ -474,12 +500,23 @@ async function insertResults(resultados) {
             return; // Saliendo sin abortar — se reporta y sigue
           }
           
+          const descEgreso = `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`;
+          const yaExiste = await yaExisteEnReserva(r.cajaUUID, r.turno, 'egreso', ing.amount, descEgreso);
+          if (yaExiste) {
+            console.log(`  ⏭️ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja}) — ya existe, se omite`);
+            if (!cajasConReservaConflict.has(r.cajaUUID)) {
+              pool.restarEgreso(denom);
+            }
+            continue;
+          }
           const r1 = await api('POST', 'reserva_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-            tipo: 'egreso', descripcion: `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`,
+            tipo: 'egreso', descripcion: descEgreso,
             monto_total: ing.amount, ...denom
           });
-          pool.restarEgreso(denom);
+          if (!cajasConReservaConflict.has(r.cajaUUID)) {
+            pool.restarEgreso(denom);
+          }
           console.log(`  ✅ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
         }
       }
@@ -526,12 +563,23 @@ async function insertResults(resultados) {
             const parsed = parseDenominaciones(ret.obs, ret.amount);
             const denom = parsed || autoDenominacion(ret.amount);
             
+            const descIngreso = `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`;
+            const yaExiste = await yaExisteEnReserva(r.cajaUUID, r.turno, 'ingreso', ret.amount, descIngreso);
+            if (yaExiste) {
+              console.log(`  ⏭️ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja}) — ya existe, se omite`);
+              if (!cajasConReservaConflict.has(r.cajaUUID)) {
+                pool.sumarIngreso(denom);
+              }
+              continue;
+            }
             await api('POST', 'reserva_movimientos', null, {
               fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-              tipo: 'ingreso', descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+              tipo: 'ingreso', descripcion: descIngreso,
               monto_total: ret.amount, ...denom
             });
-            pool.sumarIngreso(denom);
+            if (!cajasConReservaConflict.has(r.cajaUUID)) {
+              pool.sumarIngreso(denom);
+            }
             console.log(`  ✅ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja})`);
           } else {
             // RRHH Part-Time: nombre propio no encontrado en proveedores

@@ -133,7 +133,6 @@ const SearchFilterBar = ({ onSearch, results = [], onDelete, historyPrevShiftClo
       (parseFloat(rec.gastos_rrhh) || 0) +
       (parseFloat(rec.servicios) || 0) +
       (parseFloat(rec.gastos) || 0) +
-      (parseFloat(rec.correccion_boletas) || 0) +
       (parseFloat(rec.otros_egresos) || 0);
     
     const total_egresos = sumEgresosOperativos + entrega_tesoreria;

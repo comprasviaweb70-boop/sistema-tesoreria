@@ -33,10 +33,10 @@ const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit,
 
   const totalEgresos = 
     (parseFloat(ventaData?.pago_facturas_caja) || 0) +
+    (parseFloat(ventaData?.retiros_efectivo) || 0) +
     (parseFloat(ventaData?.gastos_rrhh) || 0) +
     (parseFloat(ventaData?.servicios) || 0) +
     (parseFloat(ventaData?.gastos) || 0) +
-    (parseFloat(ventaData?.correccion_boletas) || 0) +
     (parseFloat(ventaData?.otros_egresos) || 0) +
     entregaTesoreria;
 

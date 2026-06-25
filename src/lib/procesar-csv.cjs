@@ -92,12 +92,12 @@ async function insertarVentaDiaria(fecha, registros) {
       };
       
       // POST primero; si ya existe (409 conflict), hacer PATCH
-      const postUrl = URL + '/rest/v1/venta_diaria';
-      const resp = await fetch(postUrl, {
-        method: 'POST',
-        headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
-        body: JSON.stringify(body)
-      });
+            const postUrl = URL + '/rest/v1/venta_diaria';
+            const resp = await fetch(postUrl, {
+              method: 'POST',
+              headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+              body: JSON.stringify(body)
+            });
 
       const nom = row.caja_nombre?.replace(/"/g, '') || '?';
       if (resp.status === 201) {

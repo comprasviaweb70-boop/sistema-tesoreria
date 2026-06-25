@@ -6,7 +6,7 @@
  *      node recalcular-venta.cjs --fecha 2026-05-19 --todas
  */
 require('dotenv').config();
-const KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
+const KEY = process.env.SUPABASE_SERVICE_KEY;
 const URL = process.env.VITE_SUPABASE_URL;
 const hdrs = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
@@ -93,10 +93,15 @@ async function recalcularCaja(fecha, turno, cajaId) {
   // 5. Calcular retiros_efectivo = suma de egresos de todos los modulos
   const retiros_efectivo = pagCaja + trasp_egr + gastos_rrhh + servicios + gastos + otros_egresos;
 
-  // 6. Calcular correccion_boletas = suma absoluta de ajustes por corrección de boleta
-  const correccion_boletas = Math.abs(ajuste_venta_efectivo) + Math.abs(ajuste_redelcom);
+  // 6. Corrección de boleta: integrar el delta en venta_efectivo/redelcom antes del PATCH
+  // correccion_boletas se guarda como 0 porque el ajuste ya está en las partidas operativas
+  if (ajuste_venta_efectivo !== 0 || ajuste_redelcom !== 0) {
+    venta_efectivo_actual += ajuste_venta_efectivo;
+    redelcom_actual += ajuste_redelcom;
+    console.log(`    📋 Corrección boleta: venta_efectivo ${ajuste_venta_efectivo >= 0 ? '+' : ''}${ajuste_venta_efectivo.toLocaleString('es-CL')}, redelcom ${ajuste_redelcom >= 0 ? '+' : ''}${ajuste_redelcom.toLocaleString('es-CL')}`);
+  }
 
-  // 7. UPDATE venta_diaria
+  // 7. UPDATE venta_diaria (único PATCH)
   const body = {
     ingresos_efectivo,
     traspaso_tesoreria_ingreso: trasp_ing,
@@ -109,7 +114,7 @@ async function recalcularCaja(fecha, turno, cajaId) {
     pago_facturas_cc: pagCC,
     venta_efectivo: venta_efectivo_actual,
     redelcom: redelcom_actual,
-    correccion_boletas,
+    correccion_boletas: 0,
     retiros_efectivo
   };
 
@@ -119,26 +124,7 @@ async function recalcularCaja(fecha, turno, cajaId) {
     body: JSON.stringify(body)
   });
 
-  // 6. Ajuste de corrección de boleta: actualizar venta_efectivo y redelcom
-  let ajusteStatus = null;
-  if (ajuste_venta_efectivo !== 0 || ajuste_redelcom !== 0) {
-    // Leer valores actuales para hacer incremento/decremento relativo
-    const rRead = await fetch(`${URL}/rest/v1/venta_diaria?caja_id=eq.${cajaId}&fecha=eq.${fecha}&select=venta_efectivo,redelcom`, { headers: hdrs });
-    const currentRow = (await rRead.json())[0];
-    if (currentRow) {
-      const newEfectivo = (currentRow.venta_efectivo || 0) + ajuste_venta_efectivo;
-      const newRedelcom = (currentRow.redelcom || 0) + ajuste_redelcom;
-      const rAdj = await fetch(`${URL}/rest/v1/venta_diaria?caja_id=eq.${cajaId}&fecha=eq.${fecha}`, {
-        method: 'PATCH',
-        headers: { ...hdrs, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ venta_efectivo: newEfectivo, redelcom: newRedelcom })
-      });
-      ajusteStatus = rAdj.status;
-      console.log(`    📋 Corrección boleta: venta_efectivo ${ajuste_venta_efectivo >= 0 ? '+' : ''}${ajuste_venta_efectivo.toLocaleString('es-CL')}, redelcom ${ajuste_redelcom >= 0 ? '+' : ''}${ajuste_redelcom.toLocaleString('es-CL')}`);
-    }
-  }
-
-  return { status: r4.status, ajusteStatus, body, ajustes: { venta_efectivo: ajuste_venta_efectivo, redelcom: ajuste_redelcom }, reservas: (reservas||[]).length, otros: (otros||[]).length, pagos: (pagos||[]).length };
+  return { status: r4.status, body, ajustes: { venta_efectivo: ajuste_venta_efectivo, redelcom: ajuste_redelcom }, reservas: (reservas||[]).length, otros: (otros||[]).length, pagos: (pagos||[]).length };
 }
 
 (async () => {
