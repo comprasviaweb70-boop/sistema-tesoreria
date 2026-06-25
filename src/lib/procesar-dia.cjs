@@ -509,14 +509,16 @@ async function insertResults(resultados) {
             }
             continue;
           }
+          if (cajasConReservaConflict.has(r.cajaUUID)) {
+            console.log(`  ⏭️ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja}) — omitido, caja con conflicto manual`);
+            continue;
+          }
           const r1 = await api('POST', 'reserva_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
             tipo: 'egreso', descripcion: descEgreso,
             monto_total: ing.amount, ...denom
           });
-          if (!cajasConReservaConflict.has(r.cajaUUID)) {
-            pool.restarEgreso(denom);
-          }
+          pool.restarEgreso(denom);
           console.log(`  ✅ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
         }
       }
@@ -572,14 +574,16 @@ async function insertResults(resultados) {
               }
               continue;
             }
+            if (cajasConReservaConflict.has(r.cajaUUID)) {
+              console.log(`  ⏭️ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja}) — omitido, caja con conflicto manual`);
+              continue;
+            }
             await api('POST', 'reserva_movimientos', null, {
               fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
               tipo: 'ingreso', descripcion: descIngreso,
               monto_total: ret.amount, ...denom
             });
-            if (!cajasConReservaConflict.has(r.cajaUUID)) {
-              pool.sumarIngreso(denom);
-            }
+            pool.sumarIngreso(denom);
             console.log(`  ✅ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja})`);
           } else {
             // RRHH Part-Time: nombre propio no encontrado en proveedores
