@@ -14,7 +14,7 @@ const { PoolReserva, DENOM_KEYS } = require('./pool-reserva.cjs');
 const BSALE_USER = process.env.BSALE_WEB_USER;
 const BSALE_PASS = process.env.BSALE_WEB_PASS;
 const STORAGE_FILE = path.join(process.cwd(), '.bsale-session.json');
-const KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
+const KEY = process.env.SUPABASE_SERVICE_KEY;
 const URL = process.env.VITE_SUPABASE_URL;
 
 const args = process.argv.slice(2);
@@ -164,7 +164,7 @@ async function readObservation(page, nro, maxRetries = 3) {
 
 // ===== CLASIFICACION =====
 async function loadProveedores() {
-  const r = await fetch(`${URL}/rest/v1/proveedores?select=id,nombre`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
+  const r = await fetch(`${URL}/rest/v1/proveedores?select=id,nombre`, { headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY } });
   const d = await r.json();
   return Array.isArray(d) ? d : [];
 }
@@ -262,11 +262,18 @@ function isCorreccionBoleta(obs) {
   return /MAL\s*(PASADA|REGISTRADA|INGRESADA)|ES\s+(EFECTIVO|DEB|DEBITO)|CORREGIR|CORRECCI.O*N/i.test(obs);
 }
 
+function isPagoDiferencia(obs) {
+  // Detecta pagos/devoluciones por diferencia
+  // Estos van a otros_movimientos categoría "Diferencia en Ventas", NO a reserva
+  // Matchea: "PAGO DE DIFERENCIA POR CAMBIO", "CLIENTE PAGA DIFERENCIA", etc.
+  return /(?:PAGO|PAGA)\s+(?:DE\s+)?DIFERENCIA/i.test(obs);
+}
+
 // ===== INSERCIONES =====
 async function api(method, table, params, body) {
   let url = `${URL}/rest/v1/${table}`;
   if (params) url += '?' + params;
-  const opts = { method, headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' } };
+  const opts = { method, headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
   return r;
@@ -338,13 +345,13 @@ async function insertResults(resultados) {
     // Reserva movimientos
     try {
       const rRes = await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
       });
       const reservas = await rRes.json();
       if (Array.isArray(reservas) && reservas.length > 0) {
         console.log('  ⚠️ Reserva ' + cajaUUID.substring(0,8) + ' (' + reservas.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
     } catch (e) { /* ignorar */ }
@@ -352,13 +359,13 @@ async function insertResults(resultados) {
     // Pagos proveedor
     try {
       const rPago = await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
       });
       const pagos = await rPago.json();
       if (Array.isArray(pagos) && pagos.length > 0) {
         console.log('  ⚠️ Pagos ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
     } catch (e) { /* ignorar */ }
@@ -366,13 +373,13 @@ async function insertResults(resultados) {
     // Otros movimientos
     try {
       const rOtro = await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
       });
       const otros = await rOtro.json();
       if (Array.isArray(otros) && otros.length > 0) {
         console.log('  ⚠️ Otros ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
     } catch (e) { /* ignorar */ }
@@ -417,6 +424,15 @@ async function insertResults(resultados) {
             monto: ing.amount
           });
           console.log(`  ✅ Corrección boleta $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
+        } else if (isPagoDiferencia(ing.obs)) {
+          // Pago por diferencia de cambio: no toca reserva, va a otros_movimientos
+          await api('POST', 'otros_movimientos', null, {
+            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+            tipo: 'ingreso', categoria_id: 'cb02e2e4-0000-0000-0000-000000000000',
+            descripcion: `${r.caja} - INGRESO N° ${ing.nro} - ${ing.obs}`,
+            monto: ing.amount
+          });
+          console.log(`  ✅ Diferencia en Ventas $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
         } else {
           // Egreso de Tesoreria → usar pool.distribuir() (NO autoDenominacion)
           const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`);
