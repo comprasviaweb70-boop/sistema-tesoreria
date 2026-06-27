@@ -428,7 +428,7 @@ async function insertResults(resultados) {
           // Pago por diferencia de cambio: no toca reserva, va a otros_movimientos
           await api('POST', 'otros_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-            tipo: 'ingreso', categoria_id: 'cb02e2e4-0000-0000-0000-000000000000',
+            tipo: 'ingreso', categoria_id: 'cb02e2e4-a10b-48cf-887c-8ec297b63513',
             descripcion: `${r.caja} - INGRESO N° ${ing.nro} - ${ing.obs}`,
             monto: ing.amount
           });
