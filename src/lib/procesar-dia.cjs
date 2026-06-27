@@ -14,7 +14,7 @@ const { PoolReserva, DENOM_KEYS } = require('./pool-reserva.cjs');
 const BSALE_USER = process.env.BSALE_WEB_USER;
 const BSALE_PASS = process.env.BSALE_WEB_PASS;
 const STORAGE_FILE = path.join(process.cwd(), '.bsale-session.json');
-const KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
+const KEY = process.env.SUPABASE_SERVICE_KEY;
 const URL = process.env.VITE_SUPABASE_URL;
 
 const args = process.argv.slice(2);
@@ -164,7 +164,7 @@ async function readObservation(page, nro, maxRetries = 3) {
 
 // ===== CLASIFICACION =====
 async function loadProveedores() {
-  const r = await fetch(`${URL}/rest/v1/proveedores?select=id,nombre`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
+  const r = await fetch(`${URL}/rest/v1/proveedores?select=id,nombre`, { headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY } });
   const d = await r.json();
   return Array.isArray(d) ? d : [];
 }
@@ -262,51 +262,18 @@ function isCorreccionBoleta(obs) {
   return /MAL\s*(PASADA|REGISTRADA|INGRESADA)|ES\s+(EFECTIVO|DEB|DEBITO)|CORREGIR|CORRECCI.O*N/i.test(obs);
 }
 
-// ===== INSERCIONES =====
-async function verificarConflictos(resultados) {
-  const conflictos = [];
-  for (const r of resultados) {
-    let total = 0;
-    let modulos = [];
-    try {
-      // Verificar reserva_movimientos
-      let u = URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      let resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
-      let existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('reserva(' + existentes.length + ')');
-      }
-      // Verificar pagos_proveedor
-      u = URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
-      existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('pagos(' + existentes.length + ')');
-      }
-      // Verificar otros_movimientos
-      u = URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + r.cajaUUID + '&select=id';
-      resp = await fetch(u, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
-      existentes = await resp.json();
-      if (Array.isArray(existentes) && existentes.length > 0) {
-        total += existentes.length;
-        modulos.push('otros(' + existentes.length + ')');
-      }
-      if (total > 0) {
-        conflictos.push({ caja: r.caja, cajaUUID: r.cajaUUID, cantidad: total, modulos: modulos.join(', ') });
-      }
-    } catch (e) {
-      console.error('  Error al verificar conflictos para ' + r.caja + ': ' + e.message);
-    }
-  }
-  return conflictos;
+function isPagoDiferencia(obs) {
+  // Detecta pagos/devoluciones por diferencia
+  // Estos van a otros_movimientos categoría "Diferencia en Ventas", NO a reserva
+  // Matchea: "PAGO DE DIFERENCIA POR CAMBIO", "CLIENTE PAGA DIFERENCIA", etc.
+  return /(?:PAGO|PAGA)\s+(?:DE\s+)?DIFERENCIA/i.test(obs);
 }
 
+// ===== INSERCIONES =====
 async function api(method, table, params, body) {
   let url = `${URL}/rest/v1/${table}`;
   if (params) url += '?' + params;
-  const opts = { method, headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' } };
+  const opts = { method, headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
   return r;
@@ -366,58 +333,56 @@ async function processDay(page) {
   return resultados;
 }
 
+
 // ===== INSERTAR DATOS =====
 async function insertResults(resultados) {
   if (resultados.length === 0) { console.log('  Sin resultados que insertar'); return; }
   
   console.log('\n========== INSERTANDO DATOS ==========');
   
-  // Opcion C: verificar si ya hay movimientos manuales para evitar duplicados
-  const conflictos = await verificarConflictos(resultados);
-  if (conflictos.length > 0) {
-    console.log('\n⚠️  CONFLICTOS DETECTADOS (Opción C):');
-    for (const c of conflictos) {
-      console.log('   ' + c.caja.padEnd(16) + ' → ya tiene ' + c.cantidad + ' movimientos manuales (' + c.modulos + ')');
-    }
-    // Reserva: se salta la caja (se conserva lo manual)
-    console.log('   Las cajas con conflictos en RESERVA serán omitidas...\n');
-    resultados = resultados.filter(r => !conflictos.find(c => c.cajaUUID === r.cajaUUID && c.modulos.includes('reserva')));
-    if (resultados.length === 0) {
-      console.log('  Todas las cajas tienen conflictos en reserva — nada que insertar');
-      return;
-    }
-  }
-  
-  // ==== PISAR DATOS MANUALES (Opción C extendida) ====
-  // Para pagos_proveedor y otros_movimientos: borrar lo manual y dejar los de BSale
+  // ==== PISAR DATOS — BSale reemplaza todo en las 3 tablas ====
   for (const cajaUUID of resultados.map(r => r.cajaUUID)) {
+    // Reserva movimientos
+    try {
+      const rRes = await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
+      });
+      const reservas = await rRes.json();
+      if (Array.isArray(reservas) && reservas.length > 0) {
+        console.log('  ⚠️ Reserva ' + cajaUUID.substring(0,8) + ' (' + reservas.length + ' reg) — reemplazados por BSale');
+        await fetch(URL + '/rest/v1/reserva_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
+        });
+      }
+    } catch (e) { /* ignorar */ }
+
     // Pagos proveedor
     try {
       const rPago = await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
       });
       const pagos = await rPago.json();
       if (Array.isArray(pagos) && pagos.length > 0) {
-        console.log('  ⚠️ Pagos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' registros) — serán reemplazados por los de BSale');
+        console.log('  ⚠️ Pagos ' + cajaUUID.substring(0,8) + ' (' + pagos.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/pagos_proveedor?fecha_pago=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
-    } catch (e) { /* ignorar errores de pagos */ }
+    } catch (e) { /* ignorar */ }
 
     // Otros movimientos
     try {
       const rOtro = await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-        method: 'GET', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY }
+        method: 'GET', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY }
       });
       const otros = await rOtro.json();
       if (Array.isArray(otros) && otros.length > 0) {
-        console.log('  ⚠️ Otros movimientos manuales detectados para caja ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' registros) — serán reemplazados por los de BSale');
+        console.log('  ⚠️ Otros ' + cajaUUID.substring(0,8) + ' (' + otros.length + ' reg) — reemplazados por BSale');
         await fetch(URL + '/rest/v1/otros_movimientos?fecha=eq.' + FECHA_ARG + '&caja_id=eq.' + cajaUUID, {
-          method: 'DELETE', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, Prefer: 'return=minimal' }
+          method: 'DELETE', headers: { apikey: KEY, 'Authorization': 'Bearer ' + KEY, Prefer: 'return=minimal' }
         });
       }
-    } catch (e) { /* ignorar errores de otros */ }
+    } catch (e) { /* ignorar */ }
   }
 
   const pool = new PoolReserva();
@@ -459,6 +424,15 @@ async function insertResults(resultados) {
             monto: ing.amount
           });
           console.log(`  ✅ Corrección boleta $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
+        } else if (isPagoDiferencia(ing.obs)) {
+          // Pago por diferencia de cambio: no toca reserva, va a otros_movimientos
+          await api('POST', 'otros_movimientos', null, {
+            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+            tipo: 'ingreso', categoria_id: 'cb02e2e4-0000-0000-0000-000000000000',
+            descripcion: `${r.caja} - INGRESO N° ${ing.nro} - ${ing.obs}`,
+            monto: ing.amount
+          });
+          console.log(`  ✅ Diferencia en Ventas $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
         } else {
           // Egreso de Tesoreria → usar pool.distribuir() (NO autoDenominacion)
           const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`);
@@ -474,9 +448,10 @@ async function insertResults(resultados) {
             return; // Saliendo sin abortar — se reporta y sigue
           }
           
-          const r1 = await api('POST', 'reserva_movimientos', null, {
+          const descEgreso = `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`;
+          await api('POST', 'reserva_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-            tipo: 'egreso', descripcion: `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`,
+            tipo: 'egreso', descripcion: descEgreso,
             monto_total: ing.amount, ...denom
           });
           pool.restarEgreso(denom);
@@ -526,9 +501,10 @@ async function insertResults(resultados) {
             const parsed = parseDenominaciones(ret.obs, ret.amount);
             const denom = parsed || autoDenominacion(ret.amount);
             
+            const descIngreso = `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`;
             await api('POST', 'reserva_movimientos', null, {
               fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-              tipo: 'ingreso', descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+              tipo: 'ingreso', descripcion: descIngreso,
               monto_total: ret.amount, ...denom
             });
             pool.sumarIngreso(denom);
