@@ -21,7 +21,12 @@ const params = {};
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--fecha') params.fecha = args[++i];
 }
-const fecha = params.fecha || new Date().toISOString().split('T')[0];
+// Por defecto: procesar el dia de ayer (fecha del sistema)
+const fecha = params.fecha || (() => {
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  return ayer.toISOString().split('T')[0];
+})();
 // Convertir YYYY-MM-DD a DD/MM/YYYY para el datepicker
 const fechaParts = fecha.split('-');
 const fechaDisplay = `${fechaParts[2]}/${fechaParts[1]}/${fechaParts[0]}`;
@@ -313,21 +318,93 @@ function extractDataFromText(text, isMultiple = false) {
       try {
         console.log('\nProcesando: %s (value=%s)...', caja.nombre, caja.value);
 
-        // Seleccionar caja — el select nativo está oculto (width=0, height=0)
-        // Usamos evaluate para cambiar el valor y disparar eventos del SPA
+        // Seleccionar caja — el select nativo está oculto, disparamos eventos
+        // que atraviesen shadow DOM y simulamos interacción real
         await page.evaluate((value) => {
           const select = document.getElementById('id_vendedor_cierre');
-          if (select) {
-            select.value = value;
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            select.dispatchEvent(new Event('input', { bubbles: true }));
-            // También disparar el evento nativo que Svelte podría escuchar
-            const evt = new Event('change', { bubbles: true });
-            Object.defineProperty(evt, 'target', { value: select });
-            select.dispatchEvent(evt);
-          }
+          if (!select) return;
+          select.value = value;
+          // Eventos con composed para atravesar shadow DOM (Svelte/Web Components)
+          const inputEvt = new Event('input', { bubbles: true, composed: true });
+          Object.defineProperty(inputEvt, 'target', { value: select, enumerable: true });
+          select.dispatchEvent(inputEvt);
+          const changeEvt = new Event('change', { bubbles: true, composed: true });
+          Object.defineProperty(changeEvt, 'target', { value: select, enumerable: true });
+          select.dispatchEvent(changeEvt);
+          // Forzar blur para que el framework detecte salida del campo
+          select.blur();
+          // Simular keydown Enter
+          const keyEvt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true });
+          select.dispatchEvent(keyEvt);
+          const keyUpEvt = new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, composed: true });
+          select.dispatchEvent(keyUpEvt);
         }, caja.value);
-        await page.waitForTimeout(3000);
+
+        // También enviar Enter a nivel de página (por si hay un form)
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(4000);
+
+        // Buscar y hacer click en botón de búsqueda/consulta si existe
+        const btnTextos = ['Buscar', 'Consultar', 'Filtrar', 'Consultar Cierre', 'Ver', 'Aceptar'];
+        for (const txt of btnTextos) {
+          const btn = page.locator(`button:has-text("${txt}")`);
+          if (await btn.count() > 0) {
+            await btn.first().click({ force: true }).catch(() => {});
+            await page.waitForTimeout(2000);
+            break;
+          }
+        }
+
+        // === DETECTAR SELECT DE SESIONES / TURNOS ===
+        // Algunas cajas tienen múltiples sesiones (ej: error de apertura).
+        // Seleccionamos la PRIMERA (la más temprana del día).
+        await page.waitForTimeout(1500);
+        const sesionesInfo = await page.evaluate(() => {
+          const selects = Array.from(document.querySelectorAll('select'));
+          for (const s of selects) {
+            if (s.id === 'id_vendedor_cierre') continue;
+            if (s.id === 'fecha_reporte') continue;
+            const opts = Array.from(s.querySelectorAll('option')).filter(o => o.value && o.value !== '0' && o.value !== '');
+            if (opts.length >= 1) {
+              // Detectar si parece un selector de sesión (opciones con hora o fecha)
+              const texts = opts.map(o => o.textContent.trim());
+              const pareceSesion = texts.some(t => /\d{2}:\d{2}/.test(t));
+              if (pareceSesion) {
+                return {
+                  id: s.id,
+                  name: s.name,
+                  className: s.className,
+                  opciones: opts.map(o => ({ value: o.value, text: o.textContent.trim() }))
+                };
+              }
+            }
+          }
+          return null;
+        });
+
+        if (sesionesInfo && sesionesInfo.opciones.length > 1) {
+          console.log('    Sesiones encontradas: ' + sesionesInfo.opciones.map(o => o.text).join(' | '));
+          // Elegir la sesión con hora más TEMPRANA del día
+          // (BSale ordena de más reciente a más antigua; la correcta es la primera apertura)
+          const parseHora = (text) => {
+            const m = text.match(/(\d{2}):(\d{2}):(\d{2})/);
+            return m ? (parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3])) : Infinity;
+          };
+          const masTemprana = sesionesInfo.opciones.slice().sort((a, b) => parseHora(a.text) - parseHora(b.text))[0];
+          console.log('    → Seleccionando sesión más temprana: %s', masTemprana.text);
+          await page.evaluate((args) => {
+            const s = document.getElementById(args.id) || document.querySelector(`select[name="${args.name}"]`) || document.querySelector(`.${args.className.split(' ')[0]}`);
+            if (s) {
+              s.value = args.value;
+              s.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+              s.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+              s.blur();
+            }
+          }, { id: sesionesInfo.id, name: sesionesInfo.name, className: sesionesInfo.className, value: masTemprana.value });
+          await page.waitForTimeout(3000);
+        } else if (sesionesInfo) {
+          console.log('    Sesión única: %s', sesionesInfo.opciones[0]?.text || 'N/A');
+        }
 
         // Extraer texto visible de la página
         const pageText = await page.locator('body').innerText().catch(() => '');

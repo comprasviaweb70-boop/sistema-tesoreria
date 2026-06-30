@@ -55,15 +55,20 @@ async function insertarVentaDiaria(fecha, registros) {
     
     const csv = fs.readFileSync(csvPath, 'utf8');
     const rows = parseCSV(csv);
-    const cajasConDatos = rows.filter(r => parseInt(r.total_ventas) > 0);
-    
+    // Procesar todas las cajas excepto "Todos" (value=0) y las marcadas como sin datos
+    const cajasConDatos = rows.filter(r => {
+      if (r.caja_id === '0') return false; // skip fila "Todos"
+      const obs = (r.observaciones || '').trim();
+      return obs !== 'Sin datos para esta caja';
+    });
+
     if (cajasConDatos.length === 0) {
       console.log('  ' + iterFecha + ': sin datos');
       continue;
     }
-    
+
     console.log('\n  ' + iterFecha + ': ' + cajasConDatos.length + ' cajas');
-    
+
     for (const row of cajasConDatos) {
       const cajaUUID = MAPA_CAJAS[row.caja_id];
       if (!cajaUUID) { console.log('    ⚠️ caja_id ' + row.caja_id + ' sin UUID'); continue; }
@@ -128,13 +133,10 @@ async function insertarVentaDiaria(fecha, registros) {
 
 function procesarRangoFechas(fechaEspecifica) {
   if (fechaEspecifica) return [fechaEspecifica];
-  const fechas = [];
-  const start = new Date('2026-05-19');
-  const end = new Date('2026-06-02');
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    fechas.push(d.toISOString().split('T')[0]);
-  }
-  return fechas;
+  // Por defecto: procesar SOLO el dia de ayer (fecha del sistema)
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  return [ayer.toISOString().split('T')[0]];
 }
 
 // ===== MAIN =====

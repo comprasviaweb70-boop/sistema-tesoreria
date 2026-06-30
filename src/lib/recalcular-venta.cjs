@@ -8,14 +8,21 @@
 require('dotenv').config();
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 const URL = process.env.VITE_SUPABASE_URL;
-const hdrs = { apikey: KEY, Authorization: `Bearer ${KEY}` };
+const hdrs = {
+  apikey: KEY,
+  Authorization: 'Bearer ' + KEY
+};
 
 const args = process.argv.slice(2);
-const FECHA = args.includes('--fecha') ? args[args.indexOf('--fecha')+1] : null;
+const FECHA = (() => {
+  if (args.includes('--fecha')) return args[args.indexOf('--fecha')+1];
+  // Por defecto: procesar el dia de ayer (fecha del sistema)
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  return ayer.toISOString().split('T')[0];
+})();
 const CAJA_ID = args.includes('--caja') ? args[args.indexOf('--caja')+1] : null;
 const TODAS = args.includes('--todas');
-
-if (!FECHA) { console.error('Uso: --fecha YYYY-MM-DD [--caja UUID | --todas]'); process.exit(1); }
 
 // UUIDs de categorias: nombre → id
 let CAT_MAP = {};

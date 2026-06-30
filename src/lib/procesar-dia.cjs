@@ -23,9 +23,11 @@ const FECHA_ARG = (() => {
   if (idx >= 0 && idx + 1 < args.length) return args[idx + 1];
   const eq = args.find(a => a.startsWith('--fecha='));
   if (eq) return eq.split('=')[1];
-  return null;
+  // Por defecto: procesar el dia de ayer (fecha del sistema)
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  return ayer.toISOString().split('T')[0];
 })();
-if (!FECHA_ARG) { console.error('Uso: --fecha 2026-05-19'); process.exit(1); }
 
 const fp = FECHA_ARG.split('-');
 const FECHA_DISPLAY = `${fp[2]}/${fp[1]}/${fp[0]}`;
@@ -101,9 +103,75 @@ async function setFecha(page) {
 async function selectCaja(page, value) {
   await page.evaluate((val) => {
     const s = document.getElementById('id_vendedor_cierre');
-    if (s) { s.value = val; s.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (s) {
+      s.value = val;
+      s.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      s.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      s.blur();
+      const keyEvt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true });
+      s.dispatchEvent(keyEvt);
+      const keyUpEvt = new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, composed: true });
+      s.dispatchEvent(keyUpEvt);
+    }
   }, value);
+  await page.keyboard.press('Enter');
   await page.waitForTimeout(3000);
+
+  // Buscar botón de consulta
+  const btnTextos = ['Buscar', 'Consultar', 'Filtrar', 'Consultar Cierre', 'Ver', 'Aceptar'];
+  for (const txt of btnTextos) {
+    const btn = page.locator(`button:has-text("${txt}")`);
+    if (await btn.count() > 0) {
+      await btn.first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(1500);
+      break;
+    }
+  }
+
+  // === DETECTAR Y SELECCIONAR PRIMERA SESIÓN ===
+  await page.waitForTimeout(1500);
+  const sesionesInfo = await page.evaluate(() => {
+    const selects = Array.from(document.querySelectorAll('select'));
+    for (const s of selects) {
+      if (s.id === 'id_vendedor_cierre' || s.id === 'fecha_reporte') continue;
+      const opts = Array.from(s.querySelectorAll('option')).filter(o => o.value && o.value !== '0' && o.value !== '');
+      if (opts.length >= 1) {
+        const texts = opts.map(o => o.textContent.trim());
+        const pareceSesion = texts.some(t => /\d{2}:\d{2}/.test(t));
+        if (pareceSesion) {
+          return {
+            id: s.id,
+            name: s.name,
+            className: s.className,
+            opciones: opts.map(o => ({ value: o.value, text: o.textContent.trim() }))
+          };
+        }
+      }
+    }
+    return null;
+  });
+
+  if (sesionesInfo && sesionesInfo.opciones.length > 1) {
+    console.log('    Sesiones: ' + sesionesInfo.opciones.map(o => o.text).join(' | '));
+    const parseHora = (text) => {
+      const m = text.match(/(\d{2}):(\d{2}):(\d{2})/);
+      return m ? (parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3])) : Infinity;
+    };
+    const masTemprana = sesionesInfo.opciones.slice().sort((a, b) => parseHora(a.text) - parseHora(b.text))[0];
+    console.log('    → Sesión más temprana: %s', masTemprana.text);
+    await page.evaluate((args) => {
+      const s = document.getElementById(args.id) || document.querySelector(`select[name="${args.name}"]`) || document.querySelector(`.${args.className.split(' ')[0]}`);
+      if (s) {
+        s.value = args.value;
+        s.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        s.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        s.blur();
+      }
+    }, { id: sesionesInfo.id, name: sesionesInfo.name, className: sesionesInfo.className, value: masTemprana.value });
+    await page.waitForTimeout(2500);
+  } else if (sesionesInfo) {
+    console.log('    Sesión: %s', sesionesInfo.opciones[0]?.text || 'N/A');
+  }
 }
 
 async function hasData(page) {
@@ -265,8 +333,15 @@ function isCorreccionBoleta(obs) {
 function isPagoDiferencia(obs) {
   // Detecta pagos/devoluciones por diferencia
   // Estos van a otros_movimientos categoría "Diferencia en Ventas", NO a reserva
-  // Matchea: "PAGO DE DIFERENCIA POR CAMBIO", "CLIENTE PAGA DIFERENCIA", etc.
-  return /(?:PAGO|PAGA)\s+(?:DE\s+)?DIFERENCIA/i.test(obs);
+  // Matchea: "PAGO DE DIFERENCIA", "CLIENTE PAGA DIFERENCIA", "INGRESO DIFERENCIA", etc.
+  return /(?:PAGO|PAGA|INGRESO)\s+(?:DE\s+)?DIFERENCIA/i.test(obs);
+}
+
+function isInsumosLocal(proveedorNombre) {
+  // Detecta proveedores de insumos de aseo y afines
+  // Estos van a otros_movimientos categoría "Insumos local", NO a pagos_proveedor
+  const INSUMOS_LOCALES = ['HIPERLIMPIO', 'VISION DEL SUR'];
+  return INSUMOS_LOCALES.some(nombre => proveedorNombre.toUpperCase().includes(nombre));
 }
 
 function isInsumosLocal(proveedorNombre) {
@@ -440,9 +515,9 @@ async function insertResults(resultados) {
             monto: ing.amount
           });
           console.log(`  ✅ Diferencia en Ventas $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
-        } else {
-          // Egreso de Tesoreria → usar pool.distribuir() (NO autoDenominacion)
-          const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`);
+        } else if (/MONEDAS|BILLETES/i.test(ing.obs)) {
+          // Egreso de Tesoreria → usar pool.distribuir() (mencionado explicitamente)
+          const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`, ing.obs);
           
           // Verificar que la suma de denominaciones cubre el monto ANTES de insertar
           const sumaDenom = DENOM_KEYS.reduce((a,k) => a + (denom[k]||0), 0);
@@ -451,8 +526,7 @@ async function insertResults(resultados) {
             console.error(`     Solo hay $${sumaDenom.toLocaleString('es-CL')} disponible en la Reserva`);
             console.error(`     FALTAN: $${(ing.amount - sumaDenom).toLocaleString('es-CL')}`);
             console.error(`     ⛔ No se insertó ni modificó nada. Pool intacto.`);
-            console.error(`     Revisa los movimientos del día para verificar montos.`);
-            return; // Saliendo sin abortar — se reporta y sigue
+            return;
           }
           
           const descEgreso = `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`;
@@ -463,6 +537,15 @@ async function insertResults(resultados) {
           });
           pool.restarEgreso(denom);
           console.log(`  ✅ Reserva egreso $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
+        } else {
+          // Sin clasificación → otros_movimientos categoría "Movimientos por clasificar"
+          await api('POST', 'otros_movimientos', null, {
+            fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+            tipo: 'ingreso', categoria_id: '5cd2fd53-ab4b-46e9-a3c8-aae69a66e4dd',
+            descripcion: `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`,
+            monto: ing.amount
+          });
+          console.log(`  📋 Sin clasificar $${ing.amount.toLocaleString('es-CL')} (${r.caja} - ${ing.obs.substring(0,30)})`);
         }
       }
     }
