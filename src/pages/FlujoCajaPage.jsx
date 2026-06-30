@@ -282,30 +282,34 @@ const FlujoCajaPage = () => {
                 .reduce((acc, v) => acc + (parseFloat(v.diferencia_caja) || 0), 0),
         };
 
-        // 1.1 DATA OTROS MOVIMIENTOS (Bancos)
+        // 1.1 DATA OTROS MOVIMIENTOS - Separar por cuenta (MP vs BCH)
+        // El tag [Cuenta: MP] o [Cuenta: BCH] en descripcion identifica la cuenta
         const bankMovs = historyData.otrosMovs.filter(m => m.fecha === dStr && (m.caja_id === 'cuenta_corriente' || m.caja_id === null));
         
-        const bankAgg = {
-          ingresos: 0,
-          egresos_prov: 0,
-          egresos_rrhh: 0,
-          egresos_gastos: 0
-        };
+        // Dos agregados separados por cuenta
+        const mpAgg = { ingresos: 0, egresos_prov: 0, egresos_rrhh: 0, egresos_gastos: 0 };
+        const bchAgg = { ingresos: 0, egresos_prov: 0, egresos_rrhh: 0, egresos_gastos: 0 };
 
         bankMovs.forEach(m => {
           const monto = parseFloat(m.monto) || 0;
           const cat = (m.categorias_movimiento?.nombre || '').toLowerCase();
+          const desc = (m.descripcion || '').toUpperCase();
+          
+          // Determinar cuenta destino según tag en descripcion
+          // Sin tag → MP por defecto (cuenta principal de operaciones)
+          const esMP = desc.includes('[CUENTA: MP]') || desc.includes('[CUENTA:MP]');
+          const esBCH = desc.includes('[CUENTA: BCH]') || desc.includes('[CUENTA:BCH]');
+          const agg = esBCH ? bchAgg : mpAgg; // default a MP
           
           if (m.tipo === 'ingreso') {
-            bankAgg.ingresos += monto;
+            agg.ingresos += monto;
           } else {
             if (cat.includes('proveedor')) {
-              bankAgg.egresos_prov += monto;
+              agg.egresos_prov += monto;
             } else if (cat.includes('rrhh') || cat.includes('sueldo') || cat.includes('personal')) {
-              bankAgg.egresos_rrhh += monto;
+              agg.egresos_rrhh += monto;
             } else {
-              // Por defecto a gastos (servicios, comisiones, etc.)
-              bankAgg.egresos_gastos += monto;
+              agg.egresos_gastos += monto;
             }
           }
         });
@@ -327,13 +331,14 @@ const FlujoCajaPage = () => {
         // 2. DATA PROYECTADA (Usa parámetros si no hay real o si es futuro)
         const flow = {
             venta_efectivo: isProjected ? getParam('venta_efectivo') : realData.venta_efectivo,
-            abonos_mp: isProjected ? getParam('abonos_mp') : realData.abonos_mp,
-            abonos_bch: isProjected ? getParam('abonos_bch') : (realData.abonos_bch + bankAgg.ingresos),
-            pago_banco: isProjected ? getParam('pagos_proveedor_banco') : (realData.pago_banco + bankAgg.egresos_prov),
+            abonos_mp: isProjected ? getParam('abonos_mp') : (realData.abonos_mp + mpAgg.ingresos),
+            abonos_bch: isProjected ? getParam('abonos_bch') : (realData.abonos_bch + bchAgg.ingresos),
+            pago_banco: isProjected ? getParam('pagos_proveedor_banco') : (bchAgg.egresos_prov),
             pago_caja: isProjected ? getParam('pagos_proveedor_caja') : realData.pago_caja,
-            gastos: isProjected ? getParam('servicios_gastos') : (realData.gastos + bankAgg.egresos_gastos),
-            rrhh: isProjected ? getParam('rrhh') : (realData.rrhh + bankAgg.egresos_rrhh),
+            gastos: isProjected ? getParam('servicios_gastos') : (realData.gastos + mpAgg.egresos_gastos + bchAgg.egresos_gastos),
+            rrhh: isProjected ? getParam('rrhh') : (realData.rrhh + mpAgg.egresos_rrhh + bchAgg.egresos_rrhh),
             diferencia: isProjected ? 0 : realData.diferencia,
+            mpEgresos: mpAgg.egresos_prov + mpAgg.egresos_rrhh + mpAgg.egresos_gastos,
         };
 
         const totalDia = (flow.venta_efectivo + flow.abonos_mp + flow.abonos_bch) - 
@@ -365,16 +370,16 @@ const FlujoCajaPage = () => {
 
         // Actualizar saldos para el día siguiente
         // Separar gastos/rrhh de caja vs banco para asignar a la cuenta correcta
-        const bankGastos = isProjected ? 0 : bankAgg.egresos_gastos;
-        const bankRrhh = isProjected ? 0 : bankAgg.egresos_rrhh;
-        const cajaGastos = flow.gastos - bankGastos;
-        const cajaRrhh = flow.rrhh - bankRrhh;
+        const bankGastos = isProjected ? 0 : bchAgg.egresos_gastos;
+        const bankRrhh = isProjected ? 0 : bchAgg.egresos_rrhh;
+        const cajaGastos = flow.gastos - bankGastos - (isProjected ? 0 : mpAgg.egresos_gastos);
+        const cajaRrhh = flow.rrhh - bankRrhh - (isProjected ? 0 : mpAgg.egresos_rrhh);
 
         // Cajas: venta efectivo - pagos en caja - gastos caja - rrhh caja + diferencia - retiros a reserva
         currentCajas += (flow.venta_efectivo - flow.pago_caja - cajaGastos - cajaRrhh + flow.diferencia - reservaIn + reservaOut);
-        // MP: abonos MP - comisiones MP
-        currentMP += (flow.abonos_mp - ajusteMP);
-        // BCH: abonos banco - pagos proveedor banco - gastos banco - rrhh banco
+        // MP: abonos MP + ingresos MP bancarios - comisiones MP - egresos MP (proveedor, rrhh, gastos)
+        currentMP += (flow.abonos_mp - ajusteMP - flow.mpEgresos);
+        // BCH: abonos banco + ingresos BCH bancarios - pagos proveedor BCH - gastos banco - rrhh banco
         currentBCH += (flow.abonos_bch - flow.pago_banco - bankGastos - bankRrhh);
     }
     return days;

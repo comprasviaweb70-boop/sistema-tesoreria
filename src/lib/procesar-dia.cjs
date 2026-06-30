@@ -269,6 +269,13 @@ function isPagoDiferencia(obs) {
   return /(?:PAGO|PAGA)\s+(?:DE\s+)?DIFERENCIA/i.test(obs);
 }
 
+function isInsumosLocal(proveedorNombre) {
+  // Detecta proveedores de insumos de aseo y afines
+  // Estos van a otros_movimientos categoría "Insumos local", NO a pagos_proveedor
+  const INSUMOS_LOCALES = ['HIPERLIMPIO', 'VISION DEL SUR'];
+  return INSUMOS_LOCALES.some(nombre => proveedorNombre.toUpperCase().includes(nombre));
+}
+
 // ===== INSERCIONES =====
 async function api(method, table, params, body) {
   let url = `${URL}/rest/v1/${table}`;
@@ -428,7 +435,7 @@ async function insertResults(resultados) {
           // Pago por diferencia de cambio: no toca reserva, va a otros_movimientos
           await api('POST', 'otros_movimientos', null, {
             fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-            tipo: 'ingreso', categoria_id: 'cb02e2e4-0000-0000-0000-000000000000',
+            tipo: 'ingreso', categoria_id: 'cb02e2e4-a10b-48cf-887c-8ec297b63513',
             descripcion: `${r.caja} - INGRESO N° ${ing.nro} - ${ing.obs}`,
             monto: ing.amount
           });
@@ -490,12 +497,24 @@ async function insertResults(resultados) {
           //        "PAGO <nombre propio>" sin match → RRHH Part-Time (cajeras: TAFI, SOFI, etc.)
           const prov = matchProveedor(ret.obs, await loadProveedores());
           if (prov) {
-            await api('POST', 'pagos_proveedor', null, {
-              fecha_pago: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
-              monto_pagado: ret.amount, proveedor_id: prov.id,
-              origen_fondos: 'caja', comprobante_nombre: ret.obs.substring(0,100)
-            });
-            console.log(`  ✅ Pago proveedor $${ret.amount.toLocaleString('es-CL')} (${prov.nombre} ${r.caja})`);
+            // Verificar si es proveedor de insumos locales (HIPERLIMPIO, VISION DEL SUR)
+            // Estos van a otros_movimientos categoría "Insumos local", NO a pagos_proveedor
+            if (isInsumosLocal(prov.nombre)) {
+              await api('POST', 'otros_movimientos', null, {
+                fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+                tipo: 'egreso', categoria_id: 'd37f7d9a-463b-4384-a6b9-4f4f40e8532a',
+                descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+                monto: ret.amount
+              });
+              console.log(`  ✅ Insumos local $${ret.amount.toLocaleString('es-CL')} (${prov.nombre} ${r.caja})`);
+            } else {
+              await api('POST', 'pagos_proveedor', null, {
+                fecha_pago: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+                monto_pagado: ret.amount, proveedor_id: prov.id,
+                origen_fondos: 'caja', comprobante_nombre: ret.obs.substring(0,100)
+              });
+              console.log(`  ✅ Pago proveedor $${ret.amount.toLocaleString('es-CL')} (${prov.nombre} ${r.caja})`);
+            }
           } else if (isPreventivo(ret.obs)) {
             // Retiro Preventivo → reserva ingreso, suma al pool
             const parsed = parseDenominaciones(ret.obs, ret.amount);
@@ -509,6 +528,15 @@ async function insertResults(resultados) {
             });
             pool.sumarIngreso(denom);
             console.log(`  ✅ Reserva ingreso $${ret.amount.toLocaleString('es-CL')} (PREVENTIVO ${r.caja})`);
+          } else if (ret.obs.toUpperCase().includes('VISION DEL SUR') || ret.obs.toUpperCase().includes('HIPERLIMPIO')) {
+            // Proveedores de insumos locales van a otros_movimientos categoría "Insumos local"
+            await api('POST', 'otros_movimientos', null, {
+              fecha: FECHA_ARG, turno: r.turno, caja_id: r.cajaUUID,
+              tipo: 'egreso', categoria_id: 'd37f7d9a-463b-4384-a6b9-4f4f40e8532a',
+              descripcion: `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`,
+              monto: ret.amount
+            });
+            console.log(`  ✅ Insumos local $${ret.amount.toLocaleString('es-CL')} (${r.caja} - ${ret.obs.substring(0,30)})`);
           } else {
             // RRHH Part-Time: nombre propio no encontrado en proveedores
             // (cajeras PT como TAFI, SOFI/SOFIA, etc.)
