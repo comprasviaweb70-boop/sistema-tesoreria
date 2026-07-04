@@ -482,6 +482,8 @@ async function insertResults(resultados) {
   
   console.log(`\nTurno Mañana: ${manana.length} cajas, Turno Tarde: ${tarde.length} cajas`);
   
+  const sobregirosOmitidos = [];
+  
   // ===== REGLA 1: EGRESOS (Otros Ingresos) ANTES que INGRESOS (Retiros) =====
   // ===== REGLA 2: Procesar por turno (Mañana → Tarde) =====
   
@@ -531,8 +533,9 @@ async function insertResults(resultados) {
             console.error(`  ❌ SOBREGIRO: Reserva insuficiente para $${ing.amount.toLocaleString('es-CL')} en ${r.caja} Nº${ing.nro}`);
             console.error(`     Solo hay $${sumaDenom.toLocaleString('es-CL')} disponible en la Reserva`);
             console.error(`     FALTAN: $${(ing.amount - sumaDenom).toLocaleString('es-CL')}`);
-            console.error(`     ⛔ No se insertó ni modificó nada. Pool intacto.`);
-            return;
+            console.error(`     ⚠️ Item omitido, requiere revisión manual. Continuando con el resto del día.`);
+            sobregirosOmitidos.push({ caja: r.caja, turno: r.turno, nro: ing.nro, obs: ing.obs, monto: ing.amount, disponible: sumaDenom });
+            continue;
           }
           
           const descEgreso = `${r.caja} - INGRESO Nº ${ing.nro} - ${ing.obs}`;
@@ -608,6 +611,7 @@ async function insertResults(resultados) {
             // Retiro Preventivo → reserva ingreso, suma al pool
             const parsed = parseDenominaciones(ret.obs, ret.amount);
             const denom = parsed || autoDenominacion(ret.amount);
+            delete denom._explicitTotal;
             
             const descIngreso = `${r.caja} - RETIRO Nº ${ret.nro} - ${ret.obs}`;
             await api('POST', 'reserva_movimientos', null, {
@@ -646,6 +650,14 @@ async function insertResults(resultados) {
   const activas = DENOM_KEYS.filter(k => (pool.pool[k]||0) > 0);
   if (activas.length > 0) {
     console.log(`   ${activas.map(k => `${k}=${((pool.pool[k]||0)/1000).toFixed(0)}k`).join(', ')}`);
+  }
+
+  if (sobregirosOmitidos.length > 0) {
+    console.log(`\n⚠️ ========== SOBREGIROS OMITIDOS (${sobregirosOmitidos.length}) — REVISIÓN MANUAL ==========`);
+    sobregirosOmitidos.forEach(s => {
+      console.log(`  ${s.caja} (${s.turno}) Nº${s.nro} — pedía $${s.monto.toLocaleString('es-CL')}, solo había $${s.disponible.toLocaleString('es-CL')} disponible`);
+      console.log(`    Obs: ${s.obs}`);
+    });
   }
 }
 
