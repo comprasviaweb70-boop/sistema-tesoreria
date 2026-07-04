@@ -43,6 +43,7 @@ function parseDenominaciones(texto, montoTotal) {
     if (denominacion < 500 && denominacion >= 1) denominacion *= 1000;
     const tipo = getDenomKey(denominacion, 'billete');
     if (tipo && denominacion > 0 && montoTotal) {
+      if (result[tipo] > 0) continue;   // ya capturado con cantidad explícita, evitar duplicar
       const cantidad = Math.round(montoTotal / denominacion);
       if (cantidad > 0) {
         result[tipo] = (result[tipo] || 0) + cantidad * denominacion;
@@ -229,7 +230,7 @@ function getDenomKey(valor, tipo) {
   const mapaBilletes = { 20000: 'b20k', 10000: 'b10k', 5000: 'b5k', 2000: 'b2k', 1000: 'b1k' };
   const mapaMonedas = { 500: 'm500', 100: 'm100', 50: 'm50', 10: 'm10' };
   
-  if (valor < 500 && valor >= 1) {
+  if (tipo !== 'moneda' && valor < 500 && valor >= 1) {
     valor = valor * 1000;
   }
   
