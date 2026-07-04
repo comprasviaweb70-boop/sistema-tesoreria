@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { AuthContext, useAuth } from './AuthContextObject';
 export { useAuth };
@@ -7,23 +7,19 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isMountedRef = useRef(true);
 
   const ADMIN_EMAIL = 'admin@iclmarket.com';
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error("Error getting session:", error);
-      }
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
+    isMountedRef.current = true;
 
+    // onAuthStateChange dispara un evento INITIAL_SESSION inmediatamente al
+    // suscribirse (Supabase v2), por lo que no es necesario llamar también a
+    // getSession() por separado: hacerlo generaba una condición de carrera
+    // con dos actualizaciones de estado concurrentes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMountedRef.current) return;
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchUserProfile(session.user.id);
@@ -33,7 +29,10 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMountedRef.current = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (userId) => {
@@ -48,11 +47,11 @@ export const AuthProvider = ({ children }) => {
         console.error('Error fetching user profile. This could be due to RLS policies or missing record:', error);
         throw error;
       }
-      setUserProfile(data);
+      if (isMountedRef.current) setUserProfile(data);
     } catch (error) {
       console.error('Failed to load user profile:', error);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
