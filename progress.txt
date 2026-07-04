@@ -1,0 +1,135 @@
+========================================
+PROGRESO: Skill Sincronizacion Venta Diaria
+Fecha ultima actualizacion: 2026-07-02
+========================================
+
+## PROBLEMA ORIGINAL
+- Skill fallaba al scrapear cajas con multiples sesiones (ej: IRMA I. tenia 2 sesiones)
+- Scraper seleccionaba la primera opcion del <select> (mas reciente) en vez de la mas temprana
+- procesar-csv.cjs descartaba cajas con total_ventas = 0
+- Fechas hardcodeadas en varios scripts
+
+## FIXES APLICADOS
+
+### 1. Scrape-cierre-caja.cjs
+- Deteccion automatica de selects de sesion despues de cambiar caja
+- Selecciona la SESION CON HORA MAS TEMPRANA del dia
+- Eventos DOM con composed: true para Shadow DOM
+- Default: procesa AYER (fecha del sistema)
+
+### 2. Procesar-dia.cjs
+- Mismo fix de sesiones en selectCaja()
+- NUEVA FUNCION isEgresoReserva(): detecta "PARA PAGAR...$XXX" como egreso de reserva
+  (corrigio movimientos de Jacqueline: N43387 CCU $270.000, N43394 Korkoshe $200.000)
+- Default: procesa AYER
+
+### 3. Procesar-csv.cjs
+- Filtro cambiado: ahora conserva cajas con observaciones !== 'Sin datos para esta caja'
+- procesarRangoFechas(): default = [ayer] (eliminado rango hardcodeado 19/05-02/06)
+
+### 4. Recalcular-venta.cjs
+- Default: procesa AYER (sin error si no se pasa --fecha)
+
+### 5. Insertar-venta-diaria.cjs
+- Default: procesa AYER
+
+### 6. Vaciado-masivo.cjs
+- FECHAS: default = [ayer] (eliminado rango hardcodeado)
+
+### 7. BsaleIntegration.js/.cjs
+- syncDay() default = AYER
+
+### 8. Traspaso-pagos-proveedor.cjs
+- Default: procesa AYER
+
+### 9. Limpiar-fecha.cjs
+- Script nuevo para limpiar datos de una fecha antes de re-sincronizar
+- Borra: venta_diaria, reserva_movimientos, otros_movimientos, pagos_proveedor
+
+### 10. Scripts de automatizacion
+- scripts/run-sync.ps1  -> Pipeline completo en PowerShell
+- scripts/run-sync.bat  -> Doble-click para ejecutar manualmente (wrapper a .ps1)
+
+## AUTOMATIZACION ACTUAL
+Acceso directo creado en:
+  C:\Users\jsanz\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\
+  "Sincronizacion Venta Diaria.lnk"
+- Se ejecuta automaticamente al iniciar sesion en Windows
+- Procesa SIEMPRE el dia anterior (ayer)
+- Logs guardados en: logs/sync-YYYY-MM-DD.log
+
+## PIPELINE COMPLETO
+scripts\run-sync.bat  (doble-click o desde CMD/PowerShell)
+  1. scrape-cierre-caja.cjs --fecha <ayer>
+  2. procesar-csv.cjs --fecha=<ayer> --modo=venta
+  3. procesar-dia.cjs --fecha <ayer>
+  4. recalcular-venta.cjs --fecha <ayer> --todas
+
+## FECHAS PROCESADAS CORRECTAMENTE
+- 2026-06-29: 4 cajas (IRMA I. corregido, sesion 08:57)
+- 2026-06-30: 4 cajas (Jacqueline Y. corregido, egresos de reserva)
+- 2026-07-01: 4 cajas (Startup funciona OK, pipeline ejecuto automaticamente)
+
+## BUG ENCONTRADO 2026-07-02
+- Problema: La app crea registro vacio en venta_diaria al navegar (autoCreate).
+  El pipeline hace POST (sin constraint UNIQUE) y crea duplicados.
+  La app lee .maybeSingle() -> falla -> no muestra venta diaria.
+- Fix aplicado:
+  1. fix-duplicados-venta-diaria.cjs -> Limpia duplicados (conserva datos reales de BSale)
+  2. fix_duplicados_venta_diaria.sql -> Constraint UNIQUE (fecha, caja_id, turno) en Supabase
+  3. SQL ejecutado en Supabase (2026-07-02 11:35)
+
+## PENDIENTE / PROBAR
+- Verificar que mañana (2026-07-03) el pipeline no cree duplicados (constraint ya activo)
+
+## BUG ENCONTRADO 2026-07-04: Pantalla negra en Vercel (deploy desactualizado)
+- Causa: los fixes del 2026-07-03 (ErrorBoundary, reemplazo de react-helmet por
+  PageTitle.jsx, fix JSX en App.jsx) se hicieron localmente pero NUNCA se
+  commitearon ni pushearon. Vercel construye desde origin/main, que seguia en
+  el commit viejo (84a4b6f) con el bug de react-helmet + React 18
+  (NotFoundError: insertBefore).
+- Fix aplicado: commit a7c1008 "fix: reemplaza react-helmet por PageTitle
+  (bug insertBefore React 18) + ErrorBoundary + fix JSX OtrosMovimientosPage"
+  pusheado a origin/main (2026-07-04). Redeploy automatico disparado en Vercel.
+- PENDIENTE: revisar variables de entorno en el dashboard de Vercel
+  (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY). La anon key local estaba
+  truncada hasta ayer (causaba 401 Invalid API key); falta confirmar si la
+  de Vercel tiene el mismo problema.
+- LECCION: siempre hacer commit + push inmediatamente despues de cada fix,
+  no dejarlo solo en el working directory local.
+
+## BUG ENCONTRADO 2026-07-04: Falso sobregiro + abort en cascada del pipeline
+- Sintoma: pipeline del 2026-07-03 solo insertaba 1 registro en
+  reserva_movimientos y 0 en pagos_proveedor/otros_movimientos.
+- Causa raiz #1 (pool-reserva.cjs, distribuir()): cuando el parseo de la
+  observacion quedaba incompleto (ej: cajero digito solo $150.000 de un
+  retiro de $170.000), la logica automatica de fallback SOBRESCRIBIA
+  r[key] en vez de sumarlo, perdiendo denominaciones ya asignadas. Esto
+  causo un "sobregiro" falso: el codigo penso que solo habia $30.000
+  disponibles cuando en realidad habia $270.000 en billetes.
+- Causa raiz #2 (procesar-dia.cjs, insertResults()): al detectar CUALQUIER
+  sobregiro (real o falso), hacia return e ABORTABA TODA LA FUNCION,
+  cancelando el resto de cajas/turnos/pasos del dia completo. Ademas los
+  registros previos de las 3 tablas ya habian sido borrados antes del abort.
+- Fix aplicado (commit bb9cd54):
+  1. pool-reserva.cjs: r[key] = (r[key]||0) + usar (sumar, no sobrescribir)
+     en ambos loops (parseado y automatico); "disponible" en el loop
+     automatico ahora resta lo ya asignado en r[key].
+  2. procesar-dia.cjs: return -> continue en el chequeo de sobregiro,
+     mas un array sobregirosOmitidos con resumen al final de insertResults.
+  3. parse-denominaciones.cjs: expone result._explicitTotal (monto
+     realmente digitado antes de autocompletar matematicamente). Se usa
+     en pool-reserva.cjs para avisar "DETALLE INCOMPLETO" cuando el cajero
+     no cubre el monto total, y por denominacion cuando pide mas de lo
+     disponible. _explicitTotal se elimina antes de insertar en BD
+     (procesar-dia.cjs linea ~611, delete denom._explicitTotal).
+- Pipeline re-ejecutado para 2026-07-03 exitosamente: 10 reserva_movimientos,
+  3 otros_movimientos, 11 pagos_proveedor ($469.480 total). JACQUELINE
+  $170.000 distribuido correctamente (b20k=160k, b10k=10k), sin sobregiro.
+
+## MEMORIAS GUARDADAS EN CASCADE
+1. Fix: Skill Sincronizacion Venta Diaria - Sesiones multiples BSale
+2. Regla general: Scripts deben usar fecha del sistema (ayer por defecto)
+3. Tarea programada: Sincronizacion Venta Diaria en Windows Task Scheduler
+
+========================================
