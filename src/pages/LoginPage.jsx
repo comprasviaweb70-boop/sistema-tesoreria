@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,10 +55,7 @@ const LoginPage = () => {
 
   return (
     <>
-      <Helmet>
-        <title>{isLoginMode ? 'Iniciar Sesión' : 'Registro'} - ICL Market</title>
-        <meta name="description" content="Accede al sistema de tesorería de ICL Market" />
-      </Helmet>
+      <PageTitle title={`${isLoginMode ? 'Iniciar Sesión' : 'Registro'} - ICL Market`} description="Accede al sistema de tesorería de ICL Market" />
 
       <div className="gradient-bg flex items-center justify-center p-4 min-h-screen py-12">
         <div className="w-full max-w-md">
@@ -154,15 +151,15 @@ const LoginPage = () => {
                     disabled={loading}
                   >
                     {loading ? (
-                      <>
-                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      <span key="loading" className="flex items-center justify-center">
+                        <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent inline-block"></span>
                         Iniciando sesión...
-                      </>
+                      </span>
                     ) : (
-                      <>
+                      <span key="idle" className="flex items-center justify-center">
                         <LogIn className="mr-2 h-4 w-4" />
                         Acceder
-                      </>
+                      </span>
                     )}
                   </Button>
                   

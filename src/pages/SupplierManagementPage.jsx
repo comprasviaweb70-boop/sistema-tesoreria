@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { Building2, Banknote, CreditCard, Wallet, Users, ChevronDown, ChevronUp, RefreshCcw, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -127,9 +127,7 @@ const SupplierManagementPage = () => {
 
   return (
     <div className="gradient-bg min-h-screen">
-      <Helmet>
-        <title>Proveedores - Iciz Market</title>
-      </Helmet>
+      <PageTitle title="Proveedores - Iciz Market" />
 
       <Header />
 

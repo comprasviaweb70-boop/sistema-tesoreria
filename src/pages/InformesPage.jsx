@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { 
   BarChart3, 
   Calendar as CalendarIcon, 
@@ -492,9 +492,7 @@ const InformesPage = () => {
 
   return (
     <div className="gradient-bg min-h-screen">
-      <Helmet>
-        <title>Informes y Auditoría - Iciz Market</title>
-      </Helmet>
+      <PageTitle title="Informes y Auditoría - Iciz Market" />
 
       <Header />
 

@@ -323,6 +323,12 @@ function isPreventivo(obs) {
   return /RETIRO PREVENTIVO|BILLETES? DE|MONEDAS? DE|RETIRO EFECTIVO/i.test(obs);
 }
 
+function isEgresoReserva(obs) {
+  // Otros Ingresos que entregan efectivo para pagar proveedores
+  // Ej: "PARA PAGAR CCU 6 DE $20.000, 15 DE $10.000"
+  return /PARA PAGAR.*\$[\d.,]+/i.test(obs);
+}
+
 function isCorreccionBoleta(obs) {
   // Detecta observaciones que indican corrección de boleta
   // (boleta mal pasada, efectivo que se registró como débito, etc.)
@@ -515,7 +521,7 @@ async function insertResults(resultados) {
             monto: ing.amount
           });
           console.log(`  ✅ Diferencia en Ventas $${ing.amount.toLocaleString('es-CL')} (${r.caja})`);
-        } else if (/MONEDAS|BILLETES/i.test(ing.obs)) {
+        } else if (/MONEDAS|BILLETES/i.test(ing.obs) || isEgresoReserva(ing.obs)) {
           // Egreso de Tesoreria → usar pool.distribuir() (mencionado explicitamente)
           const denom = pool.distribuir(ing.amount, `Egreso Nº${ing.nro} ${r.caja}`, ing.obs);
           

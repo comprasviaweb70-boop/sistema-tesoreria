@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -387,9 +387,7 @@ const FlujoCajaPage = () => {
 
   return (
     <div className="gradient-bg min-h-screen">
-      <Helmet>
-        <title>Flujo de Caja - Iciz Market</title>
-      </Helmet>
+      <PageTitle title="Flujo de Caja - Iciz Market" />
       <Header />
       
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">

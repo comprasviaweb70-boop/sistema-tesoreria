@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { Users, Mail, Calendar, Shield, Trash2, Plus, UserPlus, Lock, User as UserIcon, Package } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -182,10 +182,7 @@ const AdminUsersPage = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Administración de Usuarios - Iciz Market</title>
-        <meta name="description" content="Gestión de roles y usuarios de Iciz Market" />
-      </Helmet>
+      <PageTitle title="Administración de Usuarios - Iciz Market" description="Gestión de roles y usuarios de Iciz Market" />
 
       <div className="gradient-bg min-h-screen">
         <Header />

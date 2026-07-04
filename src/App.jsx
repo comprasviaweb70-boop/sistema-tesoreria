@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContextObject';
 import { Toaster } from '@/components/ui/toaster';
 import ScrollToTop from '@/components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import LoginPage from '@/pages/LoginPage';
 import VentaDiariaPage from '@/pages/VentaDiariaPage';
 import AdminUsersPage from '@/pages/AdminUsersPage';
@@ -39,10 +40,11 @@ const RedirectRoot = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <ScrollToTop />
-        <Routes>
+    <ErrorBoundary>
+      <AuthProvider>
+        <Router>
+          <ScrollToTop />
+          <Routes>
           <Route path="/" element={<RedirectRoot />} />
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -74,7 +76,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <Suspense fallback={<LoadingFallback />}>
-                  < OtrosMovimientosPage />
+                  <OtrosMovimientosPage />
                 </Suspense>
               </ProtectedRoute>
             }
@@ -112,9 +114,10 @@ function App() {
             }
           />
         </Routes>
-        <Toaster />
-      </Router>
-    </AuthProvider>
+          <Toaster />
+        </Router>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

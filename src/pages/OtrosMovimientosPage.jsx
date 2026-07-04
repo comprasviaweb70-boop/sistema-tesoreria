@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { ArrowUpDown, Tag, Package, Users } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Header from '@/components/Header';
@@ -26,10 +26,7 @@ const OtrosMovimientosPage = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Otros Movimientos - Iciz Market</title>
-        <meta name="description" content="Registro de ingresos y egresos de caja" />
-      </Helmet>
+      <PageTitle title="Otros Movimientos - Iciz Market" description="Registro de ingresos y egresos de caja" />
 
       <div className="gradient-bg min-h-screen">
         <Header />

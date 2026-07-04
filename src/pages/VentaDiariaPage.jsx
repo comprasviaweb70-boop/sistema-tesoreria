@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { Calendar, Upload, AlertCircle, PlusCircle, LayoutDashboard, RefreshCcw, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1067,10 +1067,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
 
   return (
     <>
-      <Helmet>
-        <title>Venta Diaria - ICL Market</title>
-        <meta name="description" content="Gestión de ventas diarias de ICL Market" />
-      </Helmet>
+      <PageTitle title="Venta Diaria - ICL Market" description="Gestión de ventas diarias de ICL Market" />
 
       <div className="gradient-bg min-h-screen">
         <Header />

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet';
+import { PageTitle } from '@/components/PageTitle';
 import { Package, Plus, Pencil, Trash2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -151,9 +151,7 @@ const AdminCajasPage = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Gestión de Cajas - Iciz Market</title>
-      </Helmet>
+      <PageTitle title="Gestión de Cajas - Iciz Market" />
 
       <div className="gradient-bg min-h-screen">
         <Header />
