@@ -126,7 +126,7 @@ class PoolReserva {
         // Aviso: si el detalle digitado no cubre el monto total explícitamente
         // (parseDenominaciones ya autocompletó matemáticamente la diferencia)
         if (typeof parsed._explicitTotal === 'number' && parsed._explicitTotal < monto) {
-          console.warn(`    ⚠️ DETALLE INCOMPLETO: el cajero digitó $${parsed._explicitTotal.toLocaleString('es-CL')} de $${monto.toLocaleString('es-CL')} — faltan $${(monto - parsed._explicitTotal).toLocaleString('es-CL')}, completado automáticamente. Revisar digitación.`);
+          console.log(`    ⚠️ DETALLE INCOMPLETO: el cajero digitó $${parsed._explicitTotal.toLocaleString('es-CL')} de $${monto.toLocaleString('es-CL')} — faltan $${(monto - parsed._explicitTotal).toLocaleString('es-CL')}, completado automáticamente. Revisar digitación.`);
         }
 
         // Usar las denominaciones parseadas, pero respetando mínimos para monedas y disponibilidad del pool
@@ -150,7 +150,7 @@ class PoolReserva {
             console.log(`    ${key}: -$${(usar/1000).toFixed(0)}k (disponible $${(disponible/1000).toFixed(0)}k)`);
           }
           if (usar < montoDenom) {
-            console.warn(`    ⚠️ ${key}: el detalle pedía $${montoDenom.toLocaleString('es-CL')} pero solo había $${disponible.toLocaleString('es-CL')} disponible — se usará otra denominación para cubrir la diferencia.`);
+            console.log(`    ⚠️ ${key}: el detalle pedía $${montoDenom.toLocaleString('es-CL')} pero solo había $${disponible.toLocaleString('es-CL')} disponible — se usará otra denominación para cubrir la diferencia.`);
           }
         }
         
