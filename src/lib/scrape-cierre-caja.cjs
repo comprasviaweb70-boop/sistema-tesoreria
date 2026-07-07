@@ -208,6 +208,26 @@ function extractDataFromText(text, isMultiple = false) {
   return result;
 }
 
+async function gotoConReintentos(page, url, options = {}) {
+  const maxIntentos = 3;
+  let lastError;
+  for (let i = 1; i <= maxIntentos; i++) {
+    try {
+      await page.goto(url, options);
+      return;
+    } catch (e) {
+      lastError = e;
+      console.log(`  ⚠️ Intento ${i}/${maxIntentos} falló para ${url}: ${e.message}`);
+      if (i < maxIntentos) {
+        const espera = Math.min(1000 * Math.pow(2, i - 1), 10000);
+        console.log(`  Reintentando en ${espera}ms...`);
+        await new Promise(r => setTimeout(r, espera));
+      }
+    }
+  }
+  throw new Error(`No se pudo cargar ${url} tras ${maxIntentos} intentos: ${lastError.message}`);
+}
+
 (async () => {
   let browser;
   try {
@@ -228,7 +248,7 @@ function extractDataFromText(text, isMultiple = false) {
 
     // ---------- LOGIN (si necesario) ----------
     console.log('Verificando sesión...');
-    await page.goto('https://app.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await gotoConReintentos(page, 'https://app.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(2000);
 
     if (page.url().includes('login')) {
@@ -260,7 +280,7 @@ function extractDataFromText(text, isMultiple = false) {
 
     // ---------- IR A PÁGINA DE CIERRE ----------
     console.log('Cargando página de cierre de caja...');
-    await page.goto('https://app2.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await gotoConReintentos(page, 'https://app2.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(3000);
     console.log('  URL:', page.url().substring(0, 100));
 

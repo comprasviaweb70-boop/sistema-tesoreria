@@ -60,32 +60,58 @@ class PoolReserva {
     d.setDate(d.getDate() - 1);
     const diaAnterior = d.toISOString().split('T')[0];
     
-    console.log(`\nLeyendo saldo de ${diaAnterior} desde saldos_diarios...`);
+    console.log(`\nLeyendo saldo más reciente desde ${diaAnterior} hacia atrás...`);
     
-    const r = await fetch(
-      `${URL}/rest/v1/saldos_diarios?fecha=eq.${diaAnterior}&select=${DENOM_KEYS.join(',')}`,
-      { headers: hdrs }
-    );
-    const rows = await r.json();
+    // Buscar el saldo más reciente hasta 7 días atrás (fallback por gaps)
+    let saldoEncontrado = null;
+    let diasHaciaAtras = 0;
+    const MAX_DIAS_ATRAS = 7;
     
-    if (!Array.isArray(rows) || rows.length === 0) {
-      console.log(`  ⚠️ No hay saldo registrado para ${diaAnterior}, usando pool vacío`);
+    while (diasHaciaAtras <= MAX_DIAS_ATRAS) {
+      const fechaBusqueda = this._addDays(diaAnterior, -diasHaciaAtras);
+      const r = await fetch(
+        `${URL}/rest/v1/saldos_diarios?fecha=eq.${fechaBusqueda}&select=${DENOM_KEYS.join(',')}`,
+        { headers: hdrs }
+      );
+      const rows = await r.json();
+      
+      if (Array.isArray(rows) && rows.length > 0) {
+        saldoEncontrado = rows[0];
+        if (diasHaciaAtras > 0) {
+          console.log(`  ⚠️ No hay saldo para ${diaAnterior}; usando saldo más reciente de ${fechaBusqueda} (${diasHaciaAtras} día(s) atrás)`);
+        } else {
+          console.log(`  ✅ Saldo del día inmediatamente anterior (${fechaBusqueda})`);
+        }
+        break;
+      }
+      
+      diasHaciaAtras++;
+    }
+    
+    if (!saldoEncontrado) {
+      console.log(`  ⚠️ No hay saldo registrado en los últimos ${MAX_DIAS_ATRAS} días, usando pool vacío`);
       this.inicializado = true;
       return;
     }
     
-    const saldo = rows[0];
     for (const key of DENOM_KEYS) {
-      this.pool[key] = saldo[key] || 0;
+      this.pool[key] = saldoEncontrado[key] || 0;
     }
     this.totalPool = DENOM_KEYS.reduce((a, k) => a + this.pool[k], 0);
     this.inicializado = true;
     
     const activas = DENOM_KEYS.filter(k => this.pool[k] > 0);
-    console.log(`  ✅ Pool desde ${diaAnterior}: $${this.totalPool.toLocaleString('es-CL')}`);
+    console.log(`  ✅ Pool: $${this.totalPool.toLocaleString('es-CL')}`);
     if (activas.length > 0) {
       console.log(`     ${activas.map(k => `${k}=${(this.pool[k]/1000).toFixed(0)}k`).join(', ')}`);
     }
+  }
+  
+  _addDays(fecha, dias) {
+    const [y, m, d] = fecha.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + dias);
+    return date.toISOString().split('T')[0];
   }
 
   /**

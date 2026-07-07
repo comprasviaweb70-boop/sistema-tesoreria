@@ -77,9 +77,29 @@ function autoDenominacion(monto) {
   return r;
 }
 
+async function gotoConReintentos(page, url, options = {}) {
+  const maxIntentos = 3;
+  let lastError;
+  for (let i = 1; i <= maxIntentos; i++) {
+    try {
+      await page.goto(url, options);
+      return;
+    } catch (e) {
+      lastError = e;
+      console.log(`  ⚠️ Intento ${i}/${maxIntentos} falló para ${url}: ${e.message}`);
+      if (i < maxIntentos) {
+        const espera = Math.min(1000 * Math.pow(2, i - 1), 10000);
+        console.log(`  Reintentando en ${espera}ms...`);
+        await new Promise(r => setTimeout(r, espera));
+      }
+    }
+  }
+  throw new Error(`No se pudo cargar ${url} tras ${maxIntentos} intentos: ${lastError.message}`);
+}
+
 // ===== BSALE NAVEGACION =====
 async function login(page, context) {
-  await page.goto('https://app.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await gotoConReintentos(page, 'https://app.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
   await page.waitForTimeout(2000);
   if (page.url().includes('login')) {
     console.log('  Login...');
@@ -683,7 +703,7 @@ async function recalcularTodas() {
   await login(page, context);
   const cookies = await context.cookies();
   await context.addCookies(cookies.map(c => ({ name: c.name, value: c.value, domain: '.bsale.cl', path: c.path || '/', httpOnly: c.httpOnly, secure: c.secure, sameSite: 'Lax' })));
-  await page.goto('https://app2.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await gotoConReintentos(page, 'https://app2.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
   await page.waitForTimeout(3000);
   await setFecha(page);
 

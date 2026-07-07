@@ -22,6 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.agents/
+.vercel/
 
 # Debug/Temp files
 *.mjs
@@ -30,3 +32,34 @@ debug_output_full.txt
 .gemini
 tmp/
 .env
+*.bak
+*.backup
+tmp_fix*
+debug-*.cjs
+debug-screenshots/
+
+# Generated pipeline outputs
+*.csv
+cierre_caja_*.csv
+logs/sync-run.log
+.bsale-session.json
+.hermes/
+
+# Sensitive / one-off utility scripts
+Keys Sistema de Tesoreria.txt
+*.pem
+*.key
+
+# Obsolete scripts
+scripts/register-sync-task.bat
+
+# One-off analysis / fix / check scripts
+check-*.cjs
+check-*.js
+analyze_*.cjs
+buscar-*.cjs
+fix-*.cjs
+
+# Notes / scratch directories
+ISSUES/
+scratch/

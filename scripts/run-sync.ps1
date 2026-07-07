@@ -2,9 +2,10 @@
 <#
 .SYNOPSIS
     Pipeline de sincronización Venta Diaria (BSale → Supabase).
-    Ejecuta con 1 día de desfase (por defecto procesa "ayer").
+    Detecta días pendientes desde el último saldo registrado y los procesa
+    en orden cronológico (si no se especifica fecha, procesa hasta "ayer").
     Uso manual: .\run-sync.ps1 [-Fecha YYYY-MM-DD]
-    Uso automático: Programar en Windows Task Scheduler.
+    Uso automático: Acceso directo en Startup de Windows.
 #>
 param(
     [string]$Fecha = ""
@@ -14,14 +15,9 @@ $ErrorActionPreference = "Continue"
 $WORK = "C:\Contenedor Hermes\Antigravity\Sistema de Tesoreria"
 Set-Location $WORK
 
-# Calcular fecha de ayer si no se especifica
-if ([string]::IsNullOrWhiteSpace($Fecha)) {
-    $Fecha = (Get-Date).AddDays(-1).ToString("yyyy-MM-dd")
-}
-
 $LOG = Join-Path $WORK "logs"
 if (!(Test-Path $LOG)) { New-Item -ItemType Directory -Path $LOG | Out-Null }
-$LOGFILE = Join-Path $LOG "sync-$Fecha.log"
+$LOGFILE = Join-Path $LOG "sync-run.log"
 
 function Log {
     param([string]$msg)
@@ -30,25 +26,82 @@ function Log {
     Add-Content -Path $LOGFILE -Value $line
 }
 
-function Run-Step {
-    param([string]$Step, [string]$Label, [string]$Script)
-    Log "[$Step] $Label..."
+function Invoke-Step {
+    param([string]$FechaPaso, [string]$Step, [string]$Label, [string]$Script)
+    Log "[$FechaPaso][$Step] $Label..."
     $out = Invoke-Expression $Script 2>&1
-    $out | ForEach-Object { Log "  [$Step] $_" }
-    if ($LASTEXITCODE -ne 0) {
-        Log "[$Step] ❌ ERROR (exit code $LASTEXITCODE)"
-        exit 1
+    $exit = $LASTEXITCODE
+    $out | ForEach-Object { Log "  [$FechaPaso][$Step] $_" }
+    if ($exit -ne 0) {
+        Log "[$FechaPaso][$Step] ❌ ERROR (exit code $exit)"
+        return $false
     }
-    Log "[$Step] ✅ Completado"
+    Log "[$FechaPaso][$Step] ✅ Completado"
+    return $true
 }
 
-Log "=== Sincronización $Fecha ==="
+function Sync-Day {
+    param([string]$FechaPaso)
+    Log "=== Sincronización $FechaPaso ==="
 
-Run-Step "1/4" "Scrape BSale" "node src/lib/scrape-cierre-caja.cjs --fecha $Fecha"
-Run-Step "2/4" "Procesar CSV" "node src/lib/procesar-csv.cjs --fecha=$Fecha --modo=venta"
-Run-Step "3/4" "Procesar día" "node src/lib/procesar-dia.cjs --fecha $Fecha"
-Run-Step "4/4" "Recalcular venta" "node src/lib/recalcular-venta.cjs --fecha $Fecha --todas"
+    $ok = Invoke-Step $FechaPaso "1/4" "Scrape BSale" "node src/lib/scrape-cierre-caja.cjs --fecha $FechaPaso"
+    if (-not $ok) { return $false }
 
-Log "=== Fin sincronización $Fecha ==="
+    $ok = Invoke-Step $FechaPaso "2/4" "Procesar CSV" "node src/lib/procesar-csv.cjs --fecha=$FechaPaso --modo=venta"
+    if (-not $ok) { return $false }
+
+    $ok = Invoke-Step $FechaPaso "3/4" "Procesar día" "node src/lib/procesar-dia.cjs --fecha $FechaPaso"
+    if (-not $ok) { return $false }
+
+    $ok = Invoke-Step $FechaPaso "4/4" "Recalcular venta" "node src/lib/recalcular-venta.cjs --fecha $FechaPaso --todas"
+    if (-not $ok) { return $false }
+
+    Log "=== Fin sincronización $FechaPaso ==="
+    return $true
+}
+
+Log "=== Inicio ejecución run-sync ==="
+
+# Determinar fecha límite: argumento o ayer
+$fechaLimite = if ([string]::IsNullOrWhiteSpace($Fecha)) {
+    (Get-Date).AddDays(-1).ToString("yyyy-MM-dd")
+} else {
+    $Fecha
+}
+
+# Detectar días pendientes
+Log "Detectando días pendientes hasta $fechaLimite..."
+try {
+    $pendingJson = node src/lib/detectar-dias-pendientes.cjs $fechaLimite 2>&1 | Select-Object -Last 1
+    $pending = $pendingJson | ConvertFrom-Json
+} catch {
+    Log "❌ No se pudieron detectar días pendientes: $_"
+    Log "Procesando únicamente $fechaLimite como fallback."
+    $pending = @($fechaLimite)
+}
+
+if ($pending.Count -eq 0) {
+    Log "✅ No hay días pendientes hasta $fechaLimite."
+    exit 0
+}
+
+Log "Días pendientes: $($pending -join ', ')"
+
+$exitCode = 0
+$fallidos = @()
+foreach ($fechaDia in $pending) {
+    $ok = Sync-Day $fechaDia
+    if (-not $ok) {
+        $exitCode = 1
+        $fallidos += $fechaDia
+    }
+}
+
+if ($fallidos.Count -gt 0) {
+    Log "⚠️ Fechas con error: $($fallidos -join ', ')"
+}
+
+Log "=== Fin ejecución run-sync ==="
 Write-Host ""
 Write-Host "Log guardado en: $LOGFILE"
+exit $exitCode
