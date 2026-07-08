@@ -1,7 +1,8 @@
 /**
  * Detecta fechas pendientes de sincronización.
- * Busca el saldo más reciente en saldos_diarios y devuelve los días
- * entre ese saldo y "ayer" (excluyendo el día del saldo, incluyendo ayer).
+ * Revisa una ventana de 3 días (ayer-2 a ayer) verificando si el pipeline
+ * ya insertó datos reales en venta_diaria (total_ventas > 0).
+ * Los días sin datos reales se consideran pendientes.
  * Salida: JSON array de fechas YYYY-MM-DD en orden cronológico.
  */
 require('dotenv').config();
@@ -9,6 +10,8 @@ require('dotenv').config();
 const URL = process.env.VITE_SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 const hdrs = { apikey: KEY, 'Authorization': 'Bearer ' + KEY };
+
+const VENTANA = 3;
 
 function getFechaAyer() {
   const ayer = new Date();
@@ -23,36 +26,25 @@ function addDays(fecha, dias) {
   return date.toISOString().split('T')[0];
 }
 
-async function getUltimoSaldo() {
+async function diaProcesado(fecha) {
   const r = await fetch(
-    `${URL}/rest/v1/saldos_diarios?select=fecha&order=fecha.desc&limit=1`,
+    `${URL}/rest/v1/venta_diaria?fecha=eq.${fecha}&total_ventas=gt.0&select=id&limit=1`,
     { headers: hdrs }
   );
   const rows = await r.json();
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  return rows[0].fecha;
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function main() {
   const ayer = process.argv[2] || getFechaAyer();
-  const ultimoSaldo = await getUltimoSaldo();
-
-  if (!ultimoSaldo) {
-    console.log(JSON.stringify([ayer]));
-    return;
-  }
-
-  // Si ayer ya tiene saldo, no hay nada pendiente
-  if (ultimoSaldo >= ayer) {
-    console.log(JSON.stringify([]));
-    return;
-  }
-
   const pendientes = [];
-  let fecha = addDays(ultimoSaldo, 1);
-  while (fecha <= ayer) {
-    pendientes.push(fecha);
-    fecha = addDays(fecha, 1);
+
+  for (let i = VENTANA - 1; i >= 0; i--) {
+    const fecha = addDays(ayer, -i);
+    const procesado = await diaProcesado(fecha);
+    if (!procesado) {
+      pendientes.push(fecha);
+    }
   }
 
   console.log(JSON.stringify(pendientes));
