@@ -40,7 +40,7 @@ export default function ReservaPage() {
   console.log("ReservaPage rendering, isAdmin:", isAdmin);
   const [selectedMovimiento, setSelectedMovimiento] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('rpg_search') || '');
   const [filterCaja, setFilterCaja] = useState(() => localStorage.getItem('rpg_filterCaja') || 'all');
   const [filterFecha, setFilterFecha] = useState(() => localStorage.getItem('rpg_filterFecha') || '');
