@@ -15,7 +15,8 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  Calculator
+  Calculator,
+  RotateCcw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
@@ -46,12 +47,12 @@ export default function ReservaPage() {
   const [filterFecha, setFilterFecha] = useState(() => localStorage.getItem('rpg_filterFecha') || '');
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getStartOfMonthStr = () => {
+  const getStartOfYearStr = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    return new Date(d.getFullYear(), 0, 1).toISOString().split('T')[0];
   };
 
-  const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('rpg_fechaInicio') || getStartOfMonthStr());
+  const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('rpg_fechaInicio') || getStartOfYearStr());
   const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('rpg_fechaFin') || getTodayStr());
   const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
   const [saldosDiarios, setSaldosDiarios] = useState([]);
@@ -86,6 +87,21 @@ export default function ReservaPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedMovimiento(null);
+  };
+
+  const handleResetFilters = () => {
+    const hoy = getTodayStr();
+    const inicioAno = getStartOfYearStr();
+    localStorage.removeItem('rpg_search');
+    localStorage.removeItem('rpg_filterCaja');
+    localStorage.removeItem('rpg_filterFecha');
+    localStorage.removeItem('rpg_fechaInicio');
+    localStorage.removeItem('rpg_fechaFin');
+    setSearchTerm('');
+    setFilterCaja('all');
+    setFilterFecha('');
+    setFechaInicio(inicioAno);
+    setFechaFin(hoy);
   };
 
   const handleDelete = async (id) => {
@@ -297,6 +313,10 @@ export default function ReservaPage() {
             <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
               <Search className="h-4 w-4 mr-2" />
               Filtrar
+            </Button>
+            <Button onClick={handleResetFilters} variant="outline" className="glass-button h-10 px-4">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Limpiar
             </Button>
           </div>
         </CardContent>
