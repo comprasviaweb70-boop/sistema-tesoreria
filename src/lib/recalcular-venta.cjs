@@ -97,7 +97,8 @@ async function recalcularCaja(fecha, turno, cajaId) {
     }
   } catch (e) { /* ignorar */ }
 
-  // 5. Calcular retiros_efectivo = suma de egresos de todos los modulos
+  // 5. retiros_efectivo se calcula en la BD como columna generada.
+  // Se mantiene la variable solo para logging informativo.
   const retiros_efectivo = pagCaja + trasp_egr + gastos_rrhh + servicios + gastos + otros_egresos;
 
   // 6. Corrección de boleta: integrar el delta en venta_efectivo/redelcom antes del PATCH
@@ -122,7 +123,7 @@ async function recalcularCaja(fecha, turno, cajaId) {
     venta_efectivo: venta_efectivo_actual,
     redelcom: redelcom_actual,
     correccion_boletas: 0,
-    retiros_efectivo
+    // retiros_efectivo se calcula en la BD como columna generada
   };
 
   const r4 = await fetch(`${URL}/rest/v1/venta_diaria?caja_id=eq.${cajaId}&fecha=eq.${fecha}`, {
@@ -131,7 +132,7 @@ async function recalcularCaja(fecha, turno, cajaId) {
     body: JSON.stringify(body)
   });
 
-  return { status: r4.status, body, ajustes: { venta_efectivo: ajuste_venta_efectivo, redelcom: ajuste_redelcom }, reservas: (reservas||[]).length, otros: (otros||[]).length, pagos: (pagos||[]).length };
+  return { status: r4.status, body, retiros_efectivo, ajustes: { venta_efectivo: ajuste_venta_efectivo, redelcom: ajuste_redelcom }, reservas: (reservas||[]).length, otros: (otros||[]).length, pagos: (pagos||[]).length };
 }
 
 (async () => {
@@ -153,7 +154,7 @@ async function recalcularCaja(fecha, turno, cajaId) {
     console.log(`Recalculando ${cajas.length} cajas...`);
     for (const c of cajas) {
       const res = await recalcularCaja(FECHA, c.turno, c.caja_id);
-      console.log(`  ${c.caja_id.substring(0,8)} | turno=${c.turno} | status=${res.status} | ret=${res.body.retiros_efectivo} pag=${res.body.pago_facturas_caja} rrhh=${res.body.gastos_rrhh} tr_egr=${res.body.traspaso_tesoreria_egreso} tr_ing=${res.body.traspaso_tesoreria_ingreso} otros_egr=${res.body.otros_egresos}`);
+      console.log(`  ${c.caja_id.substring(0,8)} | turno=${c.turno} | status=${res.status} | ret=${res.retiros_efectivo} pag=${res.body.pago_facturas_caja} rrhh=${res.body.gastos_rrhh} tr_egr=${res.body.traspaso_tesoreria_egreso} tr_ing=${res.body.traspaso_tesoreria_ingreso} otros_egr=${res.body.otros_egresos}`);
     }
     console.log('✅ Recalculo completo');
   }

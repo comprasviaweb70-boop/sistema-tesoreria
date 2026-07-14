@@ -86,14 +86,14 @@ async function insertarVentaDiaria(fecha, registros) {
         transferencia: parseInt(row.transferencia) || 0,
         edenred: parseInt(row.edenred) || 0,
         vuelta: Math.abs(parseInt(row.vuelto) || 0),
-        retiros_efectivo: Math.abs(parseInt(row.retiros) || 0),
         cierre_declarado_pdf: parseInt(row.efectivo_final) || 0,
-        diferencia_caja: parseInt(row.diferencia_total) || parseInt(row.diferencia_efectivo) || 0,
         total_ventas: parseInt(row.total_ventas) || 0,
         ingresos_efectivo: parseInt(row.otros_ingresos) || 0,
         pago_facturas_caja: 0,
         traspaso_tesoreria_ingreso: 0,
         traspaso_tesoreria_egreso: 0,
+        // NOTA: retiros_efectivo y diferencia_caja se calculan en recalcular-venta.cjs
+        // No se escriben desde el CSV de BSale para evitar sobreescribir movimientos.
       };
       
       // POST primero; si ya existe (409 conflict), hacer PATCH

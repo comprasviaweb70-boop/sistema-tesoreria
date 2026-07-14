@@ -113,10 +113,15 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
     const subtotal_ingresos = traspaso_recibido + (parseFloat(data.ingresos_efectivo) || 0);
 
     // 4. Egresos (Agrupados - Incluye entrega a tesorería)
-    // retiros_efectivo ya incluye: pago_facturas_caja + traspaso_tesoreria_egreso + gastos_rrhh + servicios + gastos + otros_egresos
-    // (calculado así en recalcular-venta.cjs línea 94)
+    // Se calculan directamente desde las columnas granulares para evitar depender
+    // de retiros_efectivo si estuviera desincronizado (columna generada en BD).
     const sumEgresosOperativos = 
-      (parseFloat(data.retiros_efectivo) || 0);
+      (parseFloat(data.pago_facturas_caja) || 0) +
+      (parseFloat(data.traspaso_tesoreria_egreso) || 0) +
+      (parseFloat(data.gastos_rrhh) || 0) +
+      (parseFloat(data.servicios) || 0) +
+      (parseFloat(data.gastos) || 0) +
+      (parseFloat(data.otros_egresos) || 0);
     
     const total_egresos = sumEgresosOperativos;
 
@@ -397,7 +402,7 @@ const VentaDiariaPage = ({ hideHeader = false }) => {
       // Agregar campos opcionales solo si existen en el registro actual
       if (currentVentaData.vuelta !== undefined) dbData.vuelta = calculatedData.vuelta ?? 0;
       if (currentVentaData.ingresos_efectivo !== undefined) dbData.ingresos_efectivo = calculatedData.ingresos_efectivo ?? 0;
-      if (currentVentaData.retiros_efectivo !== undefined) dbData.retiros_efectivo = calculatedData.retiros_efectivo ?? 0;
+      // retiros_efectivo es columna generada: no se escribe desde el frontend
       if (currentVentaData.cierre_sistema_pdf !== undefined) dbData.cierre_sistema_pdf = calculatedData.cierre_sistema_pdf ?? 0;
 
       const { error } = await supabase

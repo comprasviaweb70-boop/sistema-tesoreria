@@ -31,10 +31,15 @@ const SummaryPanel = ({ ventaData, onCerrarDia, onReabrirDia, canClose, canEdit,
 
   const subtotalIngresos = traspasoRecibido + (parseFloat(ventaData?.ingresos_efectivo) || 0);
 
-  // retiros_efectivo ya incluye: pago_facturas_caja + traspaso_tesoreria_egreso + gastos_rrhh + servicios + gastos + otros_egresos
-  // (calculado así en recalcular-venta.cjs línea 94)
+  // Se calculan directamente desde las columnas granulares para evitar depender
+  // de retiros_efectivo si estuviera desincronizado (columna generada en BD).
   const totalEgresos = 
-    (parseFloat(ventaData?.retiros_efectivo) || 0);
+    (parseFloat(ventaData?.pago_facturas_caja) || 0) +
+    (parseFloat(ventaData?.traspaso_tesoreria_egreso) || 0) +
+    (parseFloat(ventaData?.gastos_rrhh) || 0) +
+    (parseFloat(ventaData?.servicios) || 0) +
+    (parseFloat(ventaData?.gastos) || 0) +
+    (parseFloat(ventaData?.otros_egresos) || 0);
 
   // Total Efectivo Teórico
   const totalEfectivoTeorico = 

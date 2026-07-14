@@ -75,10 +75,10 @@ export function useVentaDiariaRecord({ fecha, turno, caja_id, cajero_id, autoCre
           correccion_boletas: 0,
           otros_egresos: 0,
           ingresos_efectivo: 0,
-          retiros_efectivo: 0,
           traspaso_tesoreria_ingreso: 0,
           traspaso_tesoreria_egreso: 0,
-          cierre_declarado_pdf: 0
+          cierre_declarado_pdf: 0,
+          // retiros_efectivo se calcula automáticamente desde columnas granulares
         }])
         .select()
         .single();
