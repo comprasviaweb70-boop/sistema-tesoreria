@@ -42,9 +42,11 @@ export default function ReservaPage() {
   const [selectedMovimiento, setSelectedMovimiento] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('rpg_search') || '');
-  const [filterCaja, setFilterCaja] = useState(() => localStorage.getItem('rpg_filterCaja') || 'all');
-  const [filterFecha, setFilterFecha] = useState(() => localStorage.getItem('rpg_filterFecha') || '');
+  // Filtros de acotamiento: NO se persisten en localStorage. Un valor obsoleto
+  // (ej. una fecha única sin movimientos) ocultaba silenciosamente todo el detalle.
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCaja, setFilterCaja] = useState('all');
+  const [filterFecha, setFilterFecha] = useState('');
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const getStartOfYearStr = () => {
@@ -71,10 +73,14 @@ export default function ReservaPage() {
     load();
   }, [fechaInicio, fechaFin]);
 
-  // Persistir filtros en localStorage
-  useEffect(() => { localStorage.setItem('rpg_search', searchTerm); }, [searchTerm]);
-  useEffect(() => { localStorage.setItem('rpg_filterCaja', filterCaja); }, [filterCaja]);
-  useEffect(() => { localStorage.setItem('rpg_filterFecha', filterFecha); }, [filterFecha]);
+  // Limpieza única de claves obsoletas de filtros de acotamiento que podían ocultar el detalle.
+  useEffect(() => {
+    localStorage.removeItem('rpg_search');
+    localStorage.removeItem('rpg_filterCaja');
+    localStorage.removeItem('rpg_filterFecha');
+  }, []);
+
+  // Solo se persiste el rango de fechas (navegación principal).
   useEffect(() => { localStorage.setItem('rpg_fechaInicio', fechaInicio); }, [fechaInicio]);
   useEffect(() => { localStorage.setItem('rpg_fechaFin', fechaFin); }, [fechaFin]);
   console.log("Movimientos fetched:", movimientos.length, "Loading:", loading);
