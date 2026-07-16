@@ -422,45 +422,7 @@ export default function ReservaPage() {
 
       <Card className="glass-card border-white/5">
         <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wide text-primary/80 font-bold">Detalle de Movimientos</p>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Desde</label>
-                  <div className="relative">
-                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={detalleFechaInicio}
-                      onChange={(e) => setDetalleFechaInicio(e.target.value)}
-                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Hasta</label>
-                  <div className="relative">
-                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={detalleFechaFin}
-                      onChange={(e) => setDetalleFechaFin(e.target.value)}
-                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
-                    />
-                  </div>
-                </div>
-                <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
-                  <Search className="h-4 w-4 mr-2" />
-                  Filtrar detalle
-                </Button>
-                <Button onClick={handleResetDetalle} variant="outline" className="glass-button h-10 px-4">
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset Detalle
-                </Button>
-              </div>
-            </div>
-            <div className="w-full border-t border-white/10 my-2" />
+          <div className="flex flex-wrap items-end gap-4 justify-between">
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-amber-500/80 font-bold">Saldos Diarios</p>
               <div className="flex flex-wrap items-end gap-4">
@@ -497,6 +459,16 @@ export default function ReservaPage() {
                   Reset Saldos
                 </Button>
               </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <Button onClick={handleResetDetalle} variant="ghost" className="glass-button h-10 px-4">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset filtros Detalle
+              </Button>
+              <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-4">
+                <Search className="h-4 w-4 mr-2" />
+                Refrescar movimientos
+              </Button>
             </div>
           </div>
         </CardContent>
