@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Plus, 
   TrendingUp, 
@@ -34,6 +34,76 @@ import { useToast } from '@/hooks/use-toast';
 
 const formatCurrency = (val) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val || 0);
 
+const DETAIL_STORAGE_KEYS = {
+  fechaInicio: 'reserva_detalle_fechaInicio',
+  fechaFin: 'reserva_detalle_fechaFin',
+  search: 'reserva_detalle_search',
+  filterCaja: 'reserva_detalle_filterCaja',
+  filterFecha: 'reserva_detalle_filterFecha',
+};
+
+const SALDOS_STORAGE_KEYS = {
+  fechaInicio: 'reserva_saldos_fechaInicio',
+  fechaFin: 'reserva_saldos_fechaFin',
+};
+
+const LEGACY_STORAGE_KEYS = [
+  { old: 'rpg_fechaInicio', next: DETAIL_STORAGE_KEYS.fechaInicio },
+  { old: 'rpg_fechaFin', next: DETAIL_STORAGE_KEYS.fechaFin },
+  { old: 'rpg_search', next: DETAIL_STORAGE_KEYS.search },
+  { old: 'rpg_filterCaja', next: DETAIL_STORAGE_KEYS.filterCaja },
+  { old: 'rpg_filterFecha', next: DETAIL_STORAGE_KEYS.filterFecha },
+];
+
+const safeGetItem = (key) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(key);
+    if (value === null || value === 'undefined' || value === 'null') return null;
+    return value;
+  } catch (err) {
+    console.warn('ReservaPage: error leyendo localStorage', key, err);
+    return null;
+  }
+};
+
+const safeSetItem = (key, value) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (err) {
+    console.warn('ReservaPage: error guardando localStorage', key, err);
+  }
+};
+
+const safeRemoveItem = (key) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch (err) {
+    console.warn('ReservaPage: error eliminando localStorage', key, err);
+  }
+};
+
+const persistValue = (key, value, { allowEmpty = false } = {}) => {
+  if (!allowEmpty && (value === null || value === undefined || value === '')) {
+    safeRemoveItem(key);
+    return;
+  }
+  safeSetItem(key, value ?? '');
+};
+
+const getTodayStr = () => new Date().toISOString().split('T')[0];
+const getStartOfYearStr = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), 0, 1).toISOString().split('T')[0];
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-CL');
+};
+
 export default function ReservaPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -42,45 +112,117 @@ export default function ReservaPage() {
   const [selectedMovimiento, setSelectedMovimiento] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
-  // Filtros de acotamiento: NO se persisten en localStorage. Un valor obsoleto
-  // (ej. una fecha única sin movimientos) ocultaba silenciosamente todo el detalle.
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCaja, setFilterCaja] = useState('all');
-  const [filterFecha, setFilterFecha] = useState('');
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getStartOfYearStr = () => {
-    const d = new Date();
-    return new Date(d.getFullYear(), 0, 1).toISOString().split('T')[0];
-  };
+  const [detalleFechaInicio, setDetalleFechaInicio] = useState(() => safeGetItem(DETAIL_STORAGE_KEYS.fechaInicio) || getStartOfYearStr());
+  const [detalleFechaFin, setDetalleFechaFin] = useState(() => safeGetItem(DETAIL_STORAGE_KEYS.fechaFin) || getTodayStr());
+  const [searchTerm, setSearchTerm] = useState(() => safeGetItem(DETAIL_STORAGE_KEYS.search) || '');
+  const [filterCaja, setFilterCaja] = useState(() => safeGetItem(DETAIL_STORAGE_KEYS.filterCaja) || 'all');
+  const [filterFecha, setFilterFecha] = useState(() => safeGetItem(DETAIL_STORAGE_KEYS.filterFecha) || '');
 
-  const [fechaInicio, setFechaInicio] = useState(() => getStartOfYearStr());
-  const [fechaFin, setFechaFin] = useState(() => getTodayStr());
-  const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
+  const [saldosFechaInicio, setSaldosFechaInicio] = useState(() => safeGetItem(SALDOS_STORAGE_KEYS.fechaInicio) || getStartOfYearStr());
+  const [saldosFechaFin, setSaldosFechaFin] = useState(() => safeGetItem(SALDOS_STORAGE_KEYS.fechaFin) || getTodayStr());
+
+  const { movimientos, loading, refresh, deleteMovimiento } = useReserva(detalleFechaInicio, detalleFechaFin);
   const [saldosDiarios, setSaldosDiarios] = useState([]);
-  
+  const detalleDateWarningShown = useRef(false);
+  const saldosDateWarningShown = useRef(false);
+
+  // Migración única desde claves legacy rpg_* hacia los namespaces actuales
   useEffect(() => {
-    if (!fechaInicio || !fechaFin) return;
-    const load = async () => {
-      const { data } = await supabase
+    LEGACY_STORAGE_KEYS.forEach(({ old, next }) => {
+      const legacyValue = safeGetItem(old);
+      if (legacyValue !== null && safeGetItem(next) === null) {
+        safeSetItem(next, legacyValue);
+      }
+      safeRemoveItem(old);
+    });
+  }, []);
+
+  const loadSaldos = useCallback(async () => {
+    if (!saldosFechaInicio || !saldosFechaFin) return;
+    try {
+      const { data, error } = await supabase
         .from('saldos_diarios')
         .select('*')
-        .gte('fecha', fechaInicio)
-        .lte('fecha', fechaFin)
+        .gte('fecha', saldosFechaInicio)
+        .lte('fecha', saldosFechaFin)
         .order('fecha', { ascending: true });
+      if (error) throw error;
       setSaldosDiarios(data || []);
-    };
-    load();
-  }, [fechaInicio, fechaFin]);
+    } catch (err) {
+      console.error('Error cargando saldos_diarios:', err);
+      toast({ title: "No se pudieron cargar los saldos", description: err.message || 'Intente nuevamente.', variant: 'destructive' });
+    }
+  }, [saldosFechaInicio, saldosFechaFin, toast]);
 
-  // Limpieza única de claves obsoletas de filtros/rangos persistidos que podían ocultar el detalle.
   useEffect(() => {
-    localStorage.removeItem('rpg_search');
-    localStorage.removeItem('rpg_filterCaja');
-    localStorage.removeItem('rpg_filterFecha');
-    localStorage.removeItem('rpg_fechaInicio');
-    localStorage.removeItem('rpg_fechaFin');
-  }, []);
+    loadSaldos();
+  }, [loadSaldos]);
+
+  // Corrección automática de rangos inválidos en detalle
+  useEffect(() => {
+    if (!detalleFechaInicio || !detalleFechaFin) return;
+    if (detalleFechaInicio > detalleFechaFin) {
+      setDetalleFechaFin(detalleFechaInicio);
+      if (!detalleDateWarningShown.current) {
+        toast({ title: 'Rango inválido', description: 'El rango de detalle se ajustó porque la fecha de inicio era posterior a la de término.', variant: 'destructive' });
+        detalleDateWarningShown.current = true;
+      }
+    } else {
+      detalleDateWarningShown.current = false;
+    }
+  }, [detalleFechaInicio, detalleFechaFin, toast]);
+
+  // Corrección automática de rangos inválidos en saldos
+  useEffect(() => {
+    if (!saldosFechaInicio || !saldosFechaFin) return;
+    if (saldosFechaInicio > saldosFechaFin) {
+      setSaldosFechaFin(saldosFechaInicio);
+      if (!saldosDateWarningShown.current) {
+        toast({ title: 'Rango inválido', description: 'El rango de saldos se ajustó porque la fecha de inicio era posterior a la de término.', variant: 'destructive' });
+        saldosDateWarningShown.current = true;
+      }
+    } else {
+      saldosDateWarningShown.current = false;
+    }
+  }, [saldosFechaInicio, saldosFechaFin, toast]);
+
+  // Sanitización de la fecha puntual
+  useEffect(() => {
+    if (!filterFecha) return;
+    if ((detalleFechaInicio && filterFecha < detalleFechaInicio) || (detalleFechaFin && filterFecha > detalleFechaFin)) {
+      setFilterFecha('');
+      toast({ title: 'Fecha fuera de rango', description: 'La fecha puntual se limpió porque quedaba fuera del rango seleccionado.', variant: 'destructive' });
+    }
+  }, [filterFecha, detalleFechaInicio, detalleFechaFin, toast]);
+
+  // Persistencia sincronizada de filtros del detalle
+  useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.fechaInicio, detalleFechaInicio); }, [detalleFechaInicio]);
+  useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.fechaFin, detalleFechaFin); }, [detalleFechaFin]);
+  useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.search, searchTerm, { allowEmpty: true }); }, [searchTerm]);
+  useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.filterCaja, filterCaja, { allowEmpty: true }); }, [filterCaja]);
+  useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.filterFecha, filterFecha, { allowEmpty: true }); }, [filterFecha]);
+
+  // Persistencia sincronizada de filtros de saldos
+  useEffect(() => { persistValue(SALDOS_STORAGE_KEYS.fechaInicio, saldosFechaInicio); }, [saldosFechaInicio]);
+  useEffect(() => { persistValue(SALDOS_STORAGE_KEYS.fechaFin, saldosFechaFin); }, [saldosFechaFin]);
+
+  const handleResetDetalle = () => {
+    const defaultInicio = getStartOfYearStr();
+    const defaultFin = getTodayStr();
+    setDetalleFechaInicio(defaultInicio);
+    setDetalleFechaFin(defaultFin);
+    setSearchTerm('');
+    setFilterCaja('all');
+    setFilterFecha('');
+  };
+
+  const handleResetSaldos = () => {
+    const defaultInicio = getStartOfYearStr();
+    const defaultFin = getTodayStr();
+    setSaldosFechaInicio(defaultInicio);
+    setSaldosFechaFin(defaultFin);
+  };
 
   console.log("Movimientos fetched:", movimientos.length, "Loading:", loading);
 
@@ -95,18 +237,8 @@ export default function ReservaPage() {
   };
 
   const handleResetFilters = () => {
-    const hoy = getTodayStr();
-    const inicioAno = getStartOfYearStr();
-    localStorage.removeItem('rpg_search');
-    localStorage.removeItem('rpg_filterCaja');
-    localStorage.removeItem('rpg_filterFecha');
-    localStorage.removeItem('rpg_fechaInicio');
-    localStorage.removeItem('rpg_fechaFin');
-    setSearchTerm('');
-    setFilterCaja('all');
-    setFilterFecha('');
-    setFechaInicio(inicioAno);
-    setFechaFin(hoy);
+    handleResetDetalle();
+    handleResetSaldos();
   };
 
   const handleDelete = async (id) => {
@@ -291,38 +423,81 @@ export default function ReservaPage() {
       <Card className="glass-card border-white/5">
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Desde</label>
-              <div className="relative">
-                <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={fechaInicio}
-                  onChange={(e) => setFechaInicio(e.target.value)}
-                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
-                />
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-primary/80 font-bold">Detalle de Movimientos</p>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Desde</label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={detalleFechaInicio}
+                      onChange={(e) => setDetalleFechaInicio(e.target.value)}
+                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Hasta</label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={detalleFechaFin}
+                      onChange={(e) => setDetalleFechaFin(e.target.value)}
+                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                    />
+                  </div>
+                </div>
+                <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
+                  <Search className="h-4 w-4 mr-2" />
+                  Filtrar detalle
+                </Button>
+                <Button onClick={handleResetDetalle} variant="outline" className="glass-button h-10 px-4">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Detalle
+                </Button>
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Hasta</label>
-              <div className="relative">
-                <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={fechaFin}
-                  onChange={(e) => setFechaFin(e.target.value)}
-                  className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
-                />
+            <div className="w-full border-t border-white/10 my-2" />
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-amber-500/80 font-bold">Saldos Diarios</p>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Desde</label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={saldosFechaInicio}
+                      onChange={(e) => setSaldosFechaInicio(e.target.value)}
+                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Hasta</label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={saldosFechaFin}
+                      onChange={(e) => setSaldosFechaFin(e.target.value)}
+                      className="glass-input pl-9 w-[180px] font-medium [color-scheme:dark] text-foreground/80"
+                    />
+                  </div>
+                </div>
+                <Button onClick={loadSaldos} variant="secondary" className="glass-button h-10 px-6">
+                  <Search className="h-4 w-4 mr-2" />
+                  Filtrar saldos
+                </Button>
+                <Button onClick={handleResetSaldos} variant="outline" className="glass-button h-10 px-4">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Saldos
+                </Button>
               </div>
             </div>
-            <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-6">
-              <Search className="h-4 w-4 mr-2" />
-              Filtrar
-            </Button>
-            <Button onClick={handleResetFilters} variant="outline" className="glass-button h-10 px-4">
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Limpiar
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -448,7 +623,23 @@ export default function ReservaPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredMovements.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="h-10 text-center italic">Sin movimientos.</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24">
+                        <div className="h-full flex flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
+                          <p>No se encontraron movimientos con los filtros actuales.</p>
+                          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px]">
+                            <Badge variant="outline">Desde: {formatDate(detalleFechaInicio)}</Badge>
+                            <Badge variant="outline">Hasta: {formatDate(detalleFechaFin)}</Badge>
+                            {filterCaja !== 'all' && <Badge variant="outline">Caja: {filterCaja}</Badge>}
+                            {filterFecha && <Badge variant="outline">Fecha puntual: {formatDate(filterFecha)}</Badge>}
+                            {searchTerm && <Badge variant="outline">Texto: “{searchTerm}”</Badge>}
+                          </div>
+                          <Button size="sm" variant="ghost" onClick={handleResetDetalle} className="gap-2">
+                            <RotateCcw className="h-4 w-4" /> Restablecer filtros de Detalle
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     [...filteredMovements].reverse().map((mov) => (
                       <TableRow key={mov.id} className="hover:bg-white/5 border-white/5">
