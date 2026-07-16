@@ -54,8 +54,8 @@ export default function ReservaPage() {
     return new Date(d.getFullYear(), 0, 1).toISOString().split('T')[0];
   };
 
-  const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('rpg_fechaInicio') || getStartOfYearStr());
-  const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('rpg_fechaFin') || getTodayStr());
+  const [fechaInicio, setFechaInicio] = useState(() => getStartOfYearStr());
+  const [fechaFin, setFechaFin] = useState(() => getTodayStr());
   const { movimientos, loading, refresh, deleteMovimiento } = useReserva(fechaInicio, fechaFin);
   const [saldosDiarios, setSaldosDiarios] = useState([]);
   
@@ -73,16 +73,15 @@ export default function ReservaPage() {
     load();
   }, [fechaInicio, fechaFin]);
 
-  // Limpieza única de claves obsoletas de filtros de acotamiento que podían ocultar el detalle.
+  // Limpieza única de claves obsoletas de filtros/rangos persistidos que podían ocultar el detalle.
   useEffect(() => {
     localStorage.removeItem('rpg_search');
     localStorage.removeItem('rpg_filterCaja');
     localStorage.removeItem('rpg_filterFecha');
+    localStorage.removeItem('rpg_fechaInicio');
+    localStorage.removeItem('rpg_fechaFin');
   }, []);
 
-  // Solo se persiste el rango de fechas (navegación principal).
-  useEffect(() => { localStorage.setItem('rpg_fechaInicio', fechaInicio); }, [fechaInicio]);
-  useEffect(() => { localStorage.setItem('rpg_fechaFin', fechaFin); }, [fechaFin]);
   console.log("Movimientos fetched:", movimientos.length, "Loading:", loading);
 
   const handleEdit = (mov) => {
