@@ -26,6 +26,10 @@ function Log {
     Add-Content -Path $LOGFILE -Value $line
 }
 
+Log "⏳ Esperando 3 minutos para estabilidad de red..."
+Start-Sleep -Seconds 180
+Log "✅ Red lista, iniciando pipeline..."
+
 function Invoke-Step {
     param([string]$FechaPaso, [string]$Step, [string]$Label, [string]$Script)
     Log "[$FechaPaso][$Step] $Label..."
@@ -50,11 +54,16 @@ function Sync-Day {
     $ok = Invoke-Step $FechaPaso "2/4" "Procesar CSV" "node src/lib/procesar-csv.cjs --fecha=$FechaPaso --modo=venta"
     if (-not $ok) { return $false }
 
-    $ok = Invoke-Step $FechaPaso "3/4" "Procesar día" "node src/lib/procesar-dia.cjs --fecha $FechaPaso"
-    if (-not $ok) { return $false }
+    $ok3 = Invoke-Step $FechaPaso "3/4" "Procesar día" "node src/lib/procesar-dia.cjs --fecha $FechaPaso"
+    if (-not $ok3) {
+        Log "[$FechaPaso] ⚠️ Paso 3 falló, intentando recalcular de todos modos (paso 4)"
+    }
 
-    $ok = Invoke-Step $FechaPaso "4/4" "Recalcular venta" "node src/lib/recalcular-venta.cjs --fecha $FechaPaso --todas"
-    if (-not $ok) { return $false }
+    $ok4 = Invoke-Step $FechaPaso "4/4" "Recalcular venta" "node src/lib/recalcular-venta.cjs --fecha $FechaPaso --todas"
+    if (-not $ok3 -and -not $ok4) {
+        Log "[$FechaPaso] ❌ Pasos 3 y 4 fallaron - granulares pueden quedar en 0"
+        return $false
+    }
 
     Log "=== Fin sincronización $FechaPaso ==="
     return $true

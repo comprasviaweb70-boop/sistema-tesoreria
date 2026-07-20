@@ -694,13 +694,16 @@ async function recalcularTodas() {
 (async () => {
   console.log(`Procesando ${FECHA_ARG}...`);
   
-  const browser = await chromium.launch({ headless: true,  args: ['--disable-blink-features=AutomationControlled'] });
+  console.log('[1/5] Iniciando browser...');
+  const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
   let context;
   if (fs.existsSync(STORAGE_FILE)) context = await browser.newContext({ storageState: STORAGE_FILE });
   else context = await browser.newContext();
+  console.log('[2/5] Browser listo, navegando a BSale...');
   const page = await context.newPage(); page.setDefaultTimeout(15000);
 
   await login(page, context);
+  console.log('[3/5] Login exitoso, scrapeando cajas...');
   const cookies = await context.cookies();
   await context.addCookies(cookies.map(c => ({ name: c.name, value: c.value, domain: '.bsale.cl', path: c.path || '/', httpOnly: c.httpOnly, secure: c.secure, sameSite: 'Lax' })));
   await gotoConReintentos(page, 'https://app2.bsale.cl/mobile/close', { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -709,10 +712,16 @@ async function recalcularTodas() {
 
   const resultados = await processDay(page);
   await browser.close();
+  console.log('[4/5] Scraping completado, insertando datos...');
   
   await insertResults(resultados);
+  console.log('[5/5] Datos insertados, recalculando venta diaria...');
   
   await recalcularTodas();
   
   console.log(`\n✅ ${FECHA_ARG} procesado`);
-})().catch(e => { console.error(e); process.exit(1); });
+})().catch(e => {
+  console.error(`\n❌ ERROR FATAL procesando ${FECHA_ARG}:`);
+  console.error(e.stack || e.message || e);
+  process.exit(1);
+});

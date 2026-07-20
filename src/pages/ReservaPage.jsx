@@ -187,14 +187,15 @@ export default function ReservaPage() {
     }
   }, [saldosFechaInicio, saldosFechaFin, toast]);
 
-  // Sanitización de la fecha puntual
+  // Sanitización de la fecha puntual: si filterFecha queda fuera del rango
+  // del detalle (ej: por cambiar detalleFechaInicio/Fin), la limpia silenciosamente
+  // sin mostrar toast destructivo — es comportamiento esperado.
   useEffect(() => {
     if (!filterFecha) return;
     if ((detalleFechaInicio && filterFecha < detalleFechaInicio) || (detalleFechaFin && filterFecha > detalleFechaFin)) {
       setFilterFecha('');
-      toast({ title: 'Fecha fuera de rango', description: 'La fecha puntual se limpió porque quedaba fuera del rango seleccionado.', variant: 'destructive' });
     }
-  }, [filterFecha, detalleFechaInicio, detalleFechaFin, toast]);
+  }, [filterFecha, detalleFechaInicio, detalleFechaFin]);
 
   // Persistencia sincronizada de filtros del detalle
   useEffect(() => { persistValue(DETAIL_STORAGE_KEYS.fechaInicio, detalleFechaInicio); }, [detalleFechaInicio]);
