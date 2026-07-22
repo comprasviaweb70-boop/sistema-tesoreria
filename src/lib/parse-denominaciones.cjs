@@ -25,7 +25,7 @@ function parseDenominaciones(texto, montoTotal) {
   while ((m = reDenom.exec(upper)) !== null) {
     const cantidad = parseInt(m[1]);
     let denominacion = parseInt(m[2].replace(/\./g, ''));
-    if (denominacion < 500 && denominacion >= 1) denominacion *= 1000;
+    if (denominacion < 500 && denominacion >= 1 && !getDenomKey(denominacion)) denominacion *= 1000;
     const tipo = getDenomKey(denominacion, 'billete');
     if (tipo) {
       result[tipo] = (result[tipo] || 0) + cantidad * denominacion;
@@ -40,7 +40,7 @@ function parseDenominaciones(texto, montoTotal) {
     const before = upper.slice(Math.max(0, idx - 5), idx);
     if (/\d/.test(before)) continue; // ya capturado por reDenom
     let denominacion = parseInt(m[1].replace(/\./g, ''));
-    if (denominacion < 500 && denominacion >= 1) denominacion *= 1000;
+    if (denominacion < 500 && denominacion >= 1 && !getDenomKey(denominacion)) denominacion *= 1000;
     const tipo = getDenomKey(denominacion, 'billete');
     if (tipo && denominacion > 0 && montoTotal) {
       if (result[tipo] > 0) continue;   // ya capturado con cantidad explícita, evitar duplicar
@@ -83,8 +83,16 @@ function parseDenominaciones(texto, montoTotal) {
     const tieneSigno = beforeMatch.includes('$');
     
     let denominacion = parseInt(m[2].replace(/\./g, ''));
-    if (denominacion < 500 && denominacion >= 1) denominacion *= 1000;
-    const tipo = getDenomKey(denominacion);
+    let tipo = getDenomKey(denominacion);
+    if (!tipo && denominacion < 500 && denominacion >= 1) {
+      const monedaCheck = getDenomKey(denominacion, 'moneda');
+      if (!monedaCheck) {
+        denominacion *= 1000;
+        tipo = getDenomKey(denominacion);
+      } else {
+        tipo = monedaCheck;
+      }
+    }
     if (!tipo) continue;
 
     if (tieneSigno) {
@@ -230,12 +238,19 @@ function getDenomKey(valor, tipo) {
   const mapaBilletes = { 20000: 'b20k', 10000: 'b10k', 5000: 'b5k', 2000: 'b2k', 1000: 'b1k' };
   const mapaMonedas = { 500: 'm500', 100: 'm100', 50: 'm50', 10: 'm10' };
   
+  if (tipo === 'billete' && mapaBilletes[valor]) return mapaBilletes[valor];
+  if (tipo === 'moneda' && mapaMonedas[valor]) return mapaMonedas[valor];
+  
+  if (!tipo) {
+    if (mapaBilletes[valor]) return mapaBilletes[valor];
+    if (mapaMonedas[valor]) return mapaMonedas[valor];
+    return null;
+  }
+  
   if (tipo !== 'moneda' && valor < 500 && valor >= 1) {
     valor = valor * 1000;
   }
   
-  if (tipo === 'billete' && mapaBilletes[valor]) return mapaBilletes[valor];
-  if (tipo === 'moneda' && mapaMonedas[valor]) return mapaMonedas[valor];
   if (mapaBilletes[valor]) return mapaBilletes[valor];
   if (mapaMonedas[valor]) return mapaMonedas[valor];
   return null;
