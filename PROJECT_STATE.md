@@ -1,8 +1,9 @@
 # PROJECT_STATE.md - Sistema de Tesorería Iciz Market
 
-**Última actualización:** 2026-07-17  
+**Última actualización:** 2026-07-22  
 **Branch:** main  
-**Modelo activo:** qwen3.6-plus
+**Modelo activo:** qwen3.6-plus  
+**Último commit:** `4232643` — "Fix: delay 3min en sync, deteccion de dias pendientes por granulares, toast reserva silencioso"
 
 ---
 
@@ -49,7 +50,8 @@ El pipeline de sincronización Venta Diaria (BSale → Supabase) está **funcion
 - `pagos_proveedor`: ~300+ registros
 - `otros_movimientos`: ~200+ registros
 
-**Último día procesado:** 2026-07-16 (reprocesado exitosamente el 17/07)
+**Último día procesado:** 2026-07-19 (completado automáticamente el 20/07)
+**Días reprocesados:** 2026-07-16 y 2026-07-18 (granulares estaban en 0, corregidos)
 
 ---
 
@@ -60,6 +62,8 @@ El pipeline de sincronización Venta Diaria (BSale → Supabase) está **funcion
 | **Delay de 3 min en run-sync.ps1** | La red no está lista al iniciar Windows, BSale falla al scrapear | 2026-07-17 |
 | **Paso 4 se ejecuta aunque paso 3 falle** | Si hay movimientos de ejecuciones parciales, el recálculo corrige las granulares | 2026-07-17 |
 | **Em-dash (—) reemplazado por guión normal (-)** | PowerShell 5.1 no parsea correctamente el carácter em-dash | 2026-07-17 |
+| **Detección de días pendientes por granulares** | `detectar-dias-pendientes.cjs` ahora verifica `retiros_efectivo > 0` en vez de solo `total_ventas > 0`, para no saltar días donde el CSV se insertó pero el pipeline de movimientos no se ejecutó | 2026-07-20 |
+| **Toast de reserva silencioso en vez de destructivo** | El toast "fecha fuera de rango" era confuso y agresivo; el filtro se limpia silenciosamente | 2026-07-20 |
 | **No commitear `.env` ni `Keys Sistema de Tesoreria.txt`** | Contienen credenciales sensibles | 2026-06-22 |
 | **NO tocar datos de 2026-06-17 a 2026-06-20** | Ya fueron corregidos manualmente, están correctos | 2026-06-22 |
 | **NUNCA cambiar estado a 'Cerrado' sin confirmación** | Puede bloquear ediciones posteriores | 2026-06-22 |
@@ -67,6 +71,9 @@ El pipeline de sincronización Venta Diaria (BSale → Supabase) está **funcion
 | **Stagear específico, NO `git add -A`** | Evitar commitear archivos sensibles | 2026-06-22 |
 | **Clasificación por texto libre es frágil** | Se identificó como deuda técnica, pero se mantiene por ahora | 2026-06-22 |
 | **Flujo de Caja tiene bug crítico BCH negativo** | No distingue movimientos MP vs BCH, pendiente de resolución | 2026-06-23 |
+| **PROJECT_STATE.md conectado a Kilo Code** | Se creó `kilo.json` con `instructions: ["PROJECT_STATE.md"]` para que Kilo lo lea al inicio de cada sesión | 2026-07-17 |
+| **Bug parser confunde monedas con billetes en reDe** | `parse-denominaciones.cjs` línea 86: `denominacion < 500` multiplicaba por 1000 **antes** de verificar si ya era denominación de moneda válida ($100, $50, $10). Ej: "200 DE $100" → `getDenomKey(100000)` = `null` → se descartaba. Fix aplicado: verificar `getDenomKey(valor, 'moneda')` antes de multiplicar en los 3 handlers (reDe, reDenom, reBillSinCant). Commit `71a9a63`. Detectado con retiro Nº 43902 de IRMA I. | 2026-07-22 |
+| **Comunicación siempre en español** | Toda interacción con Kilo Code debe ser en español; respuestas, commits, y documentación en español | 2026-07-22 |
 
 ---
 
@@ -77,7 +84,7 @@ El pipeline de sincronización Venta Diaria (BSale → Supabase) está **funcion
 - [x] Procesamiento de CSV a `venta_diaria` (`procesar-csv.cjs`)
 - [x] Pipeline maestro de procesamiento diario (`procesar-dia.cjs`)
 - [x] Recálculo de venta diaria desde módulos (`recalcular-venta.cjs`)
-- [x] Detección de días pendientes (`detectar-dias-pendientes.cjs`)
+- [x] Detección de días pendientes por columnas granulares (`detectar-dias-pendientes.cjs`)
 - [x] Pool de denominaciones desde `saldos_diarios` (`pool-reserva.cjs`)
 - [x] Parser de denominaciones en observaciones (`parse-denominaciones.cjs`)
 - [x] Script orquestador con delay de red (`run-sync.ps1`)
@@ -91,12 +98,15 @@ El pipeline de sincronización Venta Diaria (BSale → Supabase) está **funcion
 - [x] Componente de pagos a proveedores
 - [x] Componente de otros movimientos
 - [x] Trigger de `saldos_diarios` automático
+- [x] Toast de reserva silencioso (no destructivo)
 
 ### Infraestructura
 - [x] Supabase configurado (Postgres + REST API + RLS)
 - [x] Deploy en Vercel
 - [x] Cron job de sincronización diaria
 - [x] Logging de ejecuciones (`logs/sync-run.log`)
+- [x] `PROJECT_STATE.md` como cerebro del proyecto
+- [x] `kilo.json` conectado a Kilo Code
 
 ---
 
