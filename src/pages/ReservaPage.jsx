@@ -451,24 +451,13 @@ export default function ReservaPage() {
                     />
                   </div>
                 </div>
-                <Button onClick={loadSaldos} variant="secondary" className="glass-button h-10 px-6">
-                  <Search className="h-4 w-4 mr-2" />
-                  Filtrar saldos
-                </Button>
-                <Button onClick={handleResetSaldos} variant="outline" className="glass-button h-10 px-4">
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset Saldos
-                </Button>
+                <span className="text-[11px] text-muted-foreground italic">Se actualiza automáticamente</span>
               </div>
             </div>
             <div className="flex flex-wrap items-end gap-2">
-              <Button onClick={handleResetDetalle} variant="ghost" className="glass-button h-10 px-4">
+              <Button onClick={handleResetSaldos} variant="outline" className="glass-button h-10 px-4">
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Reset filtros Detalle
-              </Button>
-              <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-4">
-                <Search className="h-4 w-4 mr-2" />
-                Refrescar movimientos
+                Reset Saldos
               </Button>
             </div>
           </div>
@@ -533,50 +522,88 @@ export default function ReservaPage() {
       </Card>
 
       <Card className="glass-card border-white/5 overflow-hidden">
-        <CardHeader 
-          className="cursor-pointer hover:bg-white/5 transition-colors py-3 flex flex-row items-center justify-between"
-          onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}
-        >
-          <div className="flex items-center gap-3">
-            <History className="h-5 w-5 text-primary" />
-            <div>
-              <CardTitle className="text-base">Detalle de Movimientos</CardTitle>
-              <CardDescription className="text-xs">Lista completa de ingresos, egresos y responsables.</CardDescription>
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-center gap-3">
+              <History className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle className="text-base">Detalle de Movimientos</CardTitle>
+                <CardDescription className="text-xs">Lista completa de ingresos, egresos y responsables.</CardDescription>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Caja:</label>
-              <CajaSelector 
-                value={filterCaja} 
-                onChange={setFilterCaja} 
-                showAllOption={true} 
-                allOptionLabel="TODAS"
-                label={null}
-                className="w-[110px] space-y-0"
-              />
-            </div>
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Fecha:</label>
-              <Input
-                type="date"
-                value={filterFecha}
-                onChange={(e) => setFilterFecha(e.target.value)}
-                className="h-7 w-[125px] text-[11px] glass-input bg-white/5 font-medium [color-scheme:dark] px-2"
-              />
-            </div>
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Buscar descripción..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-7 w-[150px] pl-7 text-[11px] glass-input bg-white/5"
-              />
-            </div>
-            <Button variant="ghost" size="sm" className="gap-2 shrink-0 h-7" onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}>
+            <Button variant="ghost" size="sm" className="gap-2 shrink-0 h-8" onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}>
               {isHistoryExpanded ? <><ChevronUp className="h-4 w-4" /> Contraer</> : <><ChevronDown className="h-4 w-4" /> Expandir</>}
             </Button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Desde</label>
+                <div className="relative">
+                  <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={detalleFechaInicio}
+                    onChange={(e) => setDetalleFechaInicio(e.target.value)}
+                    className="glass-input pl-9 w-[160px] font-medium [color-scheme:dark] text-foreground/80 h-10"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Hasta</label>
+                <div className="relative">
+                  <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={detalleFechaFin}
+                    onChange={(e) => setDetalleFechaFin(e.target.value)}
+                    className="glass-input pl-9 w-[160px] font-medium [color-scheme:dark] text-foreground/80 h-10"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 text-[11px] text-muted-foreground italic">Se aplica automáticamente</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button onClick={handleResetDetalle} variant="ghost" className="glass-button h-10 px-3">
+                  <RotateCcw className="h-4 w-4" />
+                  Reset filtros Detalle
+                </Button>
+                <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-3">
+                  <Search className="h-4 w-4" />
+                  Refrescar movimientos
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3 justify-end">
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Caja:</label>
+                <CajaSelector 
+                  value={filterCaja} 
+                  onChange={setFilterCaja} 
+                  showAllOption={true} 
+                  allOptionLabel="TODAS"
+                  label={null}
+                  className="w-[110px] space-y-0"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-muted-foreground uppercase font-bold shrink-0">Fecha:</label>
+                <Input
+                  type="date"
+                  value={filterFecha}
+                  onChange={(e) => setFilterFecha(e.target.value)}
+                  className="h-7 w-[125px] text-[11px] glass-input bg-white/5 font-medium [color-scheme:dark] px-2"
+                />
+              </div>
+              <div className="relative">
+                <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar descripción..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-7 w-[150px] pl-7 text-[11px] glass-input bg-white/5"
+                />
+              </div>
+            </div>
           </div>
         </CardHeader>
         {isHistoryExpanded && (
