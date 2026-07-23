@@ -541,10 +541,6 @@ export default function ReservaPage() {
                 <RotateCcw className="h-4 w-4" />
                 Reset filtros Detalle
               </Button>
-              <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-3">
-                <Search className="h-4 w-4" />
-                Refrescar movimientos
-              </Button>
             </div>
             <div className="flex flex-wrap items-end gap-3 justify-end">
               <div className="flex items-center gap-1.5">
