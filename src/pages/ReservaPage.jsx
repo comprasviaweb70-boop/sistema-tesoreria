@@ -536,42 +536,15 @@ export default function ReservaPage() {
             </Button>
           </div>
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="space-y-2">
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Desde</label>
-                <div className="relative">
-                  <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    value={detalleFechaInicio}
-                    onChange={(e) => setDetalleFechaInicio(e.target.value)}
-                    className="glass-input pl-9 w-[160px] font-medium [color-scheme:dark] text-foreground/80 h-10"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Hasta</label>
-                <div className="relative">
-                  <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    value={detalleFechaFin}
-                    onChange={(e) => setDetalleFechaFin(e.target.value)}
-                    className="glass-input pl-9 w-[160px] font-medium [color-scheme:dark] text-foreground/80 h-10"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1 text-[11px] text-muted-foreground italic">Se aplica automáticamente</div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button onClick={handleResetDetalle} variant="ghost" className="glass-button h-10 px-3">
-                  <RotateCcw className="h-4 w-4" />
-                  Reset filtros Detalle
-                </Button>
-                <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-3">
-                  <Search className="h-4 w-4" />
-                  Refrescar movimientos
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleResetDetalle} variant="ghost" className="glass-button h-10 px-3">
+                <RotateCcw className="h-4 w-4" />
+                Reset filtros Detalle
+              </Button>
+              <Button onClick={refresh} variant="secondary" className="glass-button h-10 px-3">
+                <Search className="h-4 w-4" />
+                Refrescar movimientos
+              </Button>
             </div>
             <div className="flex flex-wrap items-end gap-3 justify-end">
               <div className="flex items-center gap-1.5">
